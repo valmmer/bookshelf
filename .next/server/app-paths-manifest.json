@@ -1,9 +1,0 @@
-{
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/page": "app/page.js",
-  "/books/[id]/read/page": "app/books/[id]/read/page.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/library/page": "app/library/page.js",
-  "/books/[id]/edit/page": "app/books/[id]/edit/page.js",
-  "/books/[id]/page": "app/books/[id]/page.js"
-}
