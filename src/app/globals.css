@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* (opcional) tokens simples para cores de fundo/texto */
+:root {
+  --bg: #ffffff;
+  --fg: #0f172a; /* slate-900 */
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
