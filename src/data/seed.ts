@@ -1,4 +1,3 @@
-// src/data/seed.ts
 import type { Book } from '@/types/book';
 
 export const seedBooks: Book[] = [
@@ -66,5 +65,44 @@ export const seedBooks: Book[] = [
     synopsis: 'Uma jornada pela história da espécie humana.',
     cover: 'https://m.media-amazon.com/images/I/71z7Z-4o6qL.jpg',
     status: 'QUERO_LER',
+  },
+  {
+    id: '6',
+    title: 'O Alienista',
+    author: 'Machado de Assis',
+    genre: 'Literatura Brasileira',
+    year: 1882,
+    pages: 96,
+    currentPage: 0,
+    rating: 5,
+    synopsis: 'Clássico conto filosófico sobre loucura e poder.',
+    cover: 'https://m.media-amazon.com/images/I/81TZC1WzP6L.jpg',
+    status: 'QUERO_LER',
+  },
+  {
+    id: '7',
+    title: '1984',
+    author: 'George Orwell',
+    genre: 'Distopia',
+    year: 1949,
+    pages: 328,
+    currentPage: 0,
+    rating: 5,
+    synopsis: 'Um futuro totalitário onde o Grande Irmão vigia todos.',
+    cover: 'https://m.media-amazon.com/images/I/71kxa1-0mfL.jpg',
+    status: 'QUERO_LER',
+  },
+  {
+    id: '8',
+    title: 'Orgulho e Preconceito',
+    author: 'Jane Austen',
+    genre: 'Romance',
+    year: 1813,
+    pages: 279,
+    currentPage: 279,
+    rating: 4,
+    synopsis: 'A clássica história de Elizabeth Bennet e Mr. Darcy.',
+    cover: 'https://m.media-amazon.com/images/I/81gtKoapHFL.jpg',
+    status: 'LIDO',
   },
 ];
