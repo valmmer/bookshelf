@@ -1,22 +1,17 @@
-// src/app/books/[id]/edit/page.tsx
+// src/app/books/[id]/page.tsx
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm, type SubmitHandler } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 
 import { useBooks } from '@/store/books';
-import { useToast } from '@/components/ui/ToastProvider';
-import CoverPreview from '@/components/book/CoverPreview';
-import RatingStars from '@/components/book/RatingStars';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
-import { bookFormSchema, type BookFormValues } from '@/features/books/schema';
-import type { Book } from '@/types/book';
+import ReadOnlyStars from '@/components/book/ReadOnlyStars';
+import { normalizeCoverUrl, hasFile, type Book } from '@/types/book';
 
-export default function EditBookPage() {
-  // 1) Normaliza o id (params.id pode vir como string | string[])
+export default function BookDetailsPage() {
+  // 1) params/id sempre no topo
   const params = useParams<{ id: string | string[] }>();
   const id = useMemo(
     () => (Array.isArray(params.id) ? params.id[0] : params.id),
@@ -24,19 +19,36 @@ export default function EditBookPage() {
   );
 
   const router = useRouter();
-  const { state, updateBook } = useBooks();
-  const { showToast } = useToast();
+  const { state, deleteBook, updateBook } = useBooks();
 
-  // 2) Busca o livro; pode ser undefined → fazemos early return (type guard)
-  const maybeBook: Book | undefined = state.books.find((b) => b.id === id);
-  if (!maybeBook) {
+  // 2) TODOS os hooks no topo — NUNCA dentro de if
+  // (coloque aqui TUDO que estava nas linhas 75..81)
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isReaderOpen, setIsReaderOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [noteDraft, setNoteDraft] = useState<string>('');
+
+  // 3) pegue o livro
+  const book: Book | undefined = state.books.find((b) => b.id === id);
+
+  // 4) efeitos/derivações que dependem do book, mas SEM mover hooks
+  useEffect(() => {
+    // exemplo: sincronizar página atual quando o book mudar
+    if (book?.currentPage && Number.isFinite(book.currentPage)) {
+      setCurrentPage(book.currentPage!);
+    }
+  }, [book]);
+
+  // 5) render “not found” SÓ AQUI (depois dos hooks já terem sido chamados)
+  if (!book) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-8">
         <Breadcrumbs
           items={[
             { label: 'Início', href: '/' },
             { label: 'Biblioteca', href: '/library' },
-            { label: 'Editar' },
+            { label: 'Detalhes' },
           ]}
         />
         <p className="text-slate-600">Livro não encontrado.</p>
@@ -47,321 +59,162 @@ export default function EditBookPage() {
     );
   }
 
-  // Daqui pra baixo, "book" é 100% Book (evita “possibly undefined” em closures)
-  const book: Book = maybeBook;
+  // 6) handlers (podem usar setStates livremente)
+  const openReader = () => setIsReaderOpen(true);
+  const closeReader = () => setIsReaderOpen(false);
 
-  // 3) React Hook Form + Zod
-  //    - defaultValues populados com os dados do livro
-  //    - valueAsNumber nos campos numéricos (converte string → number)
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    watch,
-    setValue,
-  } = useForm<BookFormValues>({
-    resolver: zodResolver(bookFormSchema),
-    defaultValues: {
-      title: book.title,
-      author: book.author,
-      genre: book.genre,
-      year: book.year,
-      pages: book.pages,
-      currentPage: book.currentPage ?? 0,
-      rating: book.rating,
-      synopsis: book.synopsis,
-      cover: book.cover,
-      status: book.status ?? 'QUERO_LER',
-      isbn: book.isbn,
-      notes: book.notes,
-      fileUrl: book.fileUrl, // ← novo: caminho/URL do PDF dentro de /public
-    },
-  });
+  const toggleMenu = () => setIsMenuOpen((s) => !s);
+  const openDelete = () => setIsDeleteOpen(true);
+  const closeDelete = () => setIsDeleteOpen(false);
 
-  // Observa valores reativos (para preview e estrelas)
-  const coverUrl = watch('cover');
-  const rating = watch('rating');
+  const goToEdit = () => router.push(`/books/${book.id}/edit`);
 
-  // 4) Submit tipado: inclui "fileUrl" ao atualizar
-  const onSubmit: SubmitHandler<BookFormValues> = (values) => {
-    const updated: Book = {
-      ...book,
-      title: values.title,
-      author: values.author,
-      genre: values.genre,
-      year: values.year,
-      pages: values.pages,
-      currentPage: values.currentPage ?? 0,
-      rating: values.rating,
-      synopsis: values.synopsis,
-      cover: values.cover,
-      status: values.status,
-      isbn: values.isbn,
-      notes: values.notes,
-      fileUrl: values.fileUrl, // ← garante que salvamos o PDF
-    };
-
-    updateBook(updated);
-    showToast({
-      title: 'Livro atualizado',
-      message: 'Alterações salvas.',
-      variant: 'success',
-    });
-    router.push(`/books/${book.id}`);
-  };
-
+  // 7) UI
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Breadcrumbs */}
       <Breadcrumbs
         items={[
           { label: 'Início', href: '/' },
           { label: 'Biblioteca', href: '/library' },
-          { label: book.title, href: `/books/${book.id}` },
-          { label: 'Editar' },
+          { label: book.title },
         ]}
       />
 
-      {/* Ações de topo */}
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex items-center gap-2">
         <Link
-          href={`/books/${book.id}`}
-          className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
+          href="/library"
+          className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
         >
           Voltar
         </Link>
+        <button
+          onClick={goToEdit}
+          className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
+        >
+          Editar
+        </button>
+        <div className="relative">
+          <button
+            onClick={toggleMenu}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
+          >
+            Mais
+          </button>
+          {isMenuOpen && (
+            <div className="absolute z-10 mt-2 w-40 rounded-md border bg-white p-2 text-sm shadow">
+              <button
+                onClick={openDelete}
+                className="block w-full rounded px-2 py-1 text-left hover:bg-slate-50"
+              >
+                Remover
+              </button>
+              {hasFile(book) && (
+                <button
+                  onClick={openReader}
+                  className="mt-1 block w-full rounded px-2 py-1 text-left hover:bg-slate-50"
+                >
+                  Ler PDF
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <h1 className="mb-4 text-2xl font-semibold">Editar livro</h1>
+      <section className="flex gap-6">
+        <img
+          src={normalizeCoverUrl(book.cover)}
+          alt={book.title}
+          className="h-48 w-36 rounded-md border object-cover"
+        />
+        <div className="flex-1">
+          <h1 className="text-2xl font-semibold">{book.title}</h1>
+          {book.author && <p className="text-slate-600">{book.author}</p>}
+          <div className="mt-2">
+            <ReadOnlyStars value={book.rating ?? 0} />
+          </div>
 
-      {/* Formulário */}
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="grid grid-cols-1 gap-6 sm:grid-cols-[auto,1fr]"
-      >
-        {/* Preview da capa à esquerda */}
-        <div>
-          <CoverPreview url={coverUrl} alt="Capa do livro" />
-          <p className="mt-2 text-xs text-slate-500">Preview da capa</p>
-        </div>
-
-        {/* Campos */}
-        <div className="grid grid-cols-1 gap-4">
-          {/* Título */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">Título *</label>
-            <input
-              {...register('title')}
-              className="w-full rounded-md border px-3 py-2"
-            />
-            {errors.title && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.title.message}
+          <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-slate-700">
+            {book.year && (
+              <p>
+                <span className="text-slate-500">Ano:</span> {book.year}
+              </p>
+            )}
+            {book.pages && (
+              <p>
+                <span className="text-slate-500">Páginas:</span> {book.pages}
+              </p>
+            )}
+            {book.genre && (
+              <p>
+                <span className="text-slate-500">Gênero:</span> {book.genre}
+              </p>
+            )}
+            {typeof book.currentPage === 'number' && (
+              <p>
+                <span className="text-slate-500">Página atual:</span>{' '}
+                {currentPage}
               </p>
             )}
           </div>
 
-          {/* Autor */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">Autor *</label>
-            <input
-              {...register('author')}
-              className="w-full rounded-md border px-3 py-2"
-            />
-            {errors.author && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.author.message}
-              </p>
-            )}
-          </div>
-
-          {/* Gênero + Ano */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Gênero</label>
-              <input
-                {...register('genre')}
-                className="w-full rounded-md border px-3 py-2"
-              />
-              {errors.genre && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.genre.message}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Ano</label>
-              <input
-                {...register('year', { valueAsNumber: true })}
-                className="w-full rounded-md border px-3 py-2"
-                inputMode="numeric"
-              />
-              {errors.year && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.year.message as string}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Páginas + Página atual */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Páginas</label>
-              <input
-                {...register('pages', { valueAsNumber: true })}
-                className="w-full rounded-md border px-3 py-2"
-                inputMode="numeric"
-              />
-              {errors.pages && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.pages.message as string}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Página atual
-              </label>
-              <input
-                {...register('currentPage', { valueAsNumber: true })}
-                className="w-full rounded-md border px-3 py-2"
-                inputMode="numeric"
-              />
-              {errors.currentPage && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.currentPage.message as string}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Avaliação + Status */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Avaliação
-              </label>
-              {/* input oculto para RHF manter o campo como number */}
-              <input
-                type="hidden"
-                {...register('rating', { valueAsNumber: true })}
-              />
-              <RatingStars
-                value={rating ?? 0}
-                onChange={(n) =>
-                  setValue('rating', n || undefined, { shouldDirty: true })
-                }
-              />
-              {errors.rating && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.rating.message as string}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Status</label>
-              <select
-                {...register('status')}
-                className="w-full rounded-md border px-3 py-2"
-              >
-                <option value="QUERO_LER">Quero ler</option>
-                <option value="LENDO">Lendo</option>
-                <option value="LIDO">Lido</option>
-                <option value="PAUSADO">Pausado</option>
-                <option value="ABANDONADO">Abandonado</option>
-              </select>
-              {errors.status && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.status.message as string}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* URL da capa */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              URL da capa
-            </label>
-            <input
-              {...register('cover')}
-              className="w-full rounded-md border px-3 py-2"
-              placeholder="https://..."
-            />
-            {errors.cover && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.cover.message as string}
-              </p>
-            )}
-          </div>
-
-          {/* 🔽 NOVO: Caminho do PDF dentro do projeto */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Arquivo PDF (caminho no projeto)
-            </label>
-            <input
-              {...register('fileUrl')}
-              className="w-full rounded-md border px-3 py-2"
-              placeholder="/ebooks/dezesseis-luas-kami-garcia.pdf"
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              O arquivo deve estar em <code>public/ebooks/</code>. Ex.:{' '}
-              <code>/ebooks/dezesseis-luas-kami-garcia.pdf</code>
+          {book.synopsis && (
+            <p className="mt-4 whitespace-pre-wrap text-slate-800">
+              {book.synopsis}
             </p>
-            {errors.fileUrl && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.fileUrl.message as string}
-              </p>
-            )}
-          </div>
+          )}
+        </div>
+      </section>
 
-          {/* ISBN */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">ISBN</label>
-            <input
-              {...register('isbn')}
-              className="w-full rounded-md border px-3 py-2"
-            />
-          </div>
-
-          {/* Sinopse */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">Sinopse</label>
-            <textarea
-              {...register('synopsis')}
-              className="min-h-28 w-full rounded-md border px-3 py-2"
-            />
-          </div>
-
-          {/* Notas */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">Notas</label>
-            <textarea
-              {...register('notes')}
-              className="min-h-24 w-full rounded-md border px-3 py-2"
-            />
-          </div>
-
-          {/* Ações */}
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
-            >
-              {isSubmitting ? 'Salvando…' : 'Salvar alterações'}
-            </button>
-            <Link
-              href={`/books/${book.id}`}
-              className="rounded-md border px-4 py-2 text-sm hover:bg-slate-50"
-            >
-              Cancelar
-            </Link>
+      {/* Modal de remover (exemplo) */}
+      {isDeleteOpen && (
+        <div className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-md bg-white p-4 shadow">
+            <p className="mb-4">
+              Tem certeza que deseja remover “{book.title}”?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeDelete}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  deleteBook(book.id);
+                  router.push('/library');
+                }}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-sm text-white hover:bg-rose-500"
+              >
+                Remover
+              </button>
+            </div>
           </div>
         </div>
-      </form>
+      )}
+
+      {/* Leitor PDF (exemplo toggle) */}
+      {isReaderOpen && hasFile(book) && (
+        <div className="fixed inset-0 z-20 grid place-items-center bg-black/60 p-4">
+          <div className="h-[90vh] w-full max-w-5xl rounded-md bg-white p-2 shadow">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-lg font-medium">Lendo: {book.title}</h2>
+              <button
+                onClick={closeReader}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+            {/* Troque por seu componente real de leitura */}
+            <iframe
+              src={book.fileUrl}
+              className="h-[80vh] w-full rounded border"
+            />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

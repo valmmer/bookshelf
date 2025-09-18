@@ -43,7 +43,7 @@ export default function ReadOnlyStars({
           style={{ width: `${sizeRem}rem`, height: `${sizeRem}rem` }}
           // lucide não tem fill por padrão; usamos currentColor + stroke
           // para "preencher", aplicamos classe 'fill-current'
-          // @ts-ignore – ignoramos o tipo do prop 'fill' no JSX
+
           fill="currentColor"
         />
       ))}

@@ -1,3 +1,4 @@
+// src/app/books/new/page.tsx
 'use client';
 
 import { useForm, type SubmitHandler, useWatch } from 'react-hook-form';
@@ -11,6 +12,7 @@ import RatingStars from '@/components/book/RatingStars';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { Progress } from '@/components/ui/progress';
 import { bookFormSchema, type BookFormValues } from '@/features/books/schema';
+import type { Book } from '@/types/book'; // ✅ ADICIONADO: vamos tipar newBook como Book
 
 export default function NewBookPage() {
   const router = useRouter();
@@ -23,7 +25,7 @@ export default function NewBookPage() {
     formState: { errors, isSubmitting },
     watch,
     setValue,
-    control, // ⬅️ precisamos expor o control para useWatch
+    control,
   } = useForm<BookFormValues>({
     resolver: zodResolver(bookFormSchema),
     defaultValues: {
@@ -32,14 +34,14 @@ export default function NewBookPage() {
       genre: undefined,
       year: undefined,
       pages: undefined,
-      currentPage: 0, // ⬅️ NÃO entra no progresso
+      currentPage: 0,
       rating: undefined,
       synopsis: undefined,
       cover: undefined,
-      status: 'QUERO_LER', // ⬅️ NÃO entra no progresso (tem default)
+      status: 'QUERO_LER',
       isbn: undefined,
       notes: undefined,
-      fileUrl: '', // ⬅️ string vazia = não preenchido
+      fileUrl: '',
     },
   });
 
@@ -49,11 +51,7 @@ export default function NewBookPage() {
   // ---------------------------
   // PROGRESSO DE PREENCHIMENTO
   // ---------------------------
-  // useWatch evita re-render de tudo; só dispara quando os campos mudam
   const values = useWatch({ control });
-
-  // 👇 Versão contando "campos úteis", ignorando defaults.
-  // Se quiser contar só obrigatórios, veja a variante logo abaixo (comentada).
   const completion = (() => {
     const checks = [
       !!values?.title?.trim(),
@@ -67,27 +65,15 @@ export default function NewBookPage() {
       !!values?.isbn?.trim(),
       !!values?.notes?.trim(),
       !!values?.fileUrl?.trim(),
-      // status e currentPage ficam de fora porque têm defaults
     ];
     const total = checks.length;
     const filled = checks.filter(Boolean).length;
     return total ? Math.round((filled / total) * 100) : 0;
   })();
 
-  // 👉 Variante bem rígida (só os obrigatórios contam):
-  // const completion = (() => {
-  //   const checks = [
-  //     !!values?.title?.trim(),
-  //     !!values?.author?.trim(),
-  //     !!values?.fileUrl?.trim(),
-  //   ];
-  //   const total = checks.length;
-  //   const filled = checks.filter(Boolean).length;
-  //   return total ? Math.round((filled / total) * 100) : 0;
-  // })();
-
   const onSubmit: SubmitHandler<BookFormValues> = (values) => {
-    const newBook = {
+    // ✅ MONTE UM Book COMPLETO (inclui createdAt)
+    const newBook: Book = {
       id: crypto.randomUUID(),
       title: values.title,
       author: values.author,
@@ -101,11 +87,10 @@ export default function NewBookPage() {
       status: values.status,
       isbn: values.isbn,
       notes: values.notes,
-      // se o usuário digitou “/ebooks/arquivo.pdf” já vem certo;
-      // se digitou só “arquivo.pdf”, seu reader normaliza depois
       fileUrl: values.fileUrl?.startsWith('/ebooks/')
         ? values.fileUrl
         : `/ebooks/${(values.fileUrl ?? '').replace(/^\/+/, '')}`,
+      createdAt: new Date(), // ✅ ESSA LINHA RESOLVE O ERRO DE TIPO
     };
 
     addBook(newBook);
@@ -138,7 +123,6 @@ export default function NewBookPage() {
 
       <h1 className="mb-2 text-2xl font-semibold">Adicionar novo livro</h1>
 
-      {/* Barra de progresso – agora começa em 0 quando tudo está vazio */}
       <div className="mb-4">
         <div className="mb-1 text-sm font-medium">
           Progresso do preenchimento

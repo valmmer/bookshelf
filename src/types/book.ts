@@ -8,26 +8,37 @@ export type ReadingStatus =
   | 'LENDO'
   | 'LIDO'
   | 'PAUSADO'
-  | 'ABANDONADO';
+  | 'ABANDONADO'
+  | 'NÃO LIDO'; // suporte explícito ao rótulo em PT
 
 /**
  * Interface principal (entidade persistida).
  * Campos opcionais deixam o app resiliente a rascunhos/migrações.
  */
-// src/types/book.ts
 export interface Book {
   id: string;
   title: string;
   author?: string;
   year?: number;
+
+  // gêneros
   genre?: string;
   genres?: string[];
+
+  // leitura
   pages?: number;
   currentPage?: number;
   rating?: number;
-  status?: 'QUERO_LER' | 'LENDO' | 'LIDO' | 'PAUSADO' | 'ABANDONADO';
+  status?: ReadingStatus;
+
+  // mídia
   cover?: string;
-  fileUrl?: string;
+  fileUrl?: string; // caminho do PDF ou URL externa
+
+  // extras
+  synopsis?: string; // sinopse/resumo
+  notes?: string; // anotações pessoais
+  isbn?: string; // ISBN opcional
 
   /** Data de criação (controlada pelo store/localStorage) */
   createdAt: Date;
@@ -91,6 +102,7 @@ export const STATUS_LABEL: Record<ReadingStatus, string> = {
   LIDO: 'Lido',
   PAUSADO: 'Pausado',
   ABANDONADO: 'Abandonado',
+  'NÃO LIDO': 'Não lido',
 };
 
 /** Cores sugeridas (Tailwind) por status */
@@ -122,6 +134,11 @@ export const STATUS_STYLE: Record<
     bg: 'bg-rose-100',
     text: 'text-rose-800',
     border: 'border-rose-200',
+  },
+  'NÃO LIDO': {
+    bg: 'bg-slate-50',
+    text: 'text-slate-700',
+    border: 'border-slate-200',
   },
 };
 
@@ -167,7 +184,7 @@ export function normalizePdfPath(u?: string | null): string | null {
 }
 
 /* ------------------------------------------------------------------ */
-/* Type guards (opc) — úteis para checagens antes de ações             */
+/* Type guards — úteis para checagens antes de ações                   */
 /* ------------------------------------------------------------------ */
 
 export function hasFile(book: Book): book is Book & { fileUrl: string } {

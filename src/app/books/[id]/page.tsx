@@ -1,27 +1,16 @@
 'use client';
 
-/**
- * Página de detalhes do livro.
- * - Mostra capa + metadados + sinopse/notas
- * - Ações: Ler, Voltar, Editar, Excluir
- * - Efeitos de carregamento (spinners) nos botões ao clicar
- * - Diálogo de confirmação para excluir
- * - Barra de progresso visual (Progress do shadcn)
- */
-
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import ReadOnlyStars from '@/components/book/ReadOnlyStars';
-
-import { useBooks } from '@/store/books'; // Store global (com persistência no localStorage)
-import type { Book } from '@/types/book'; // Tipo Book vindo do store
+import { useBooks } from '@/store/books';
+import type { Book } from '@/types/book';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
-import { useToast } from '@/components/ui/ToastProvider'; // Toasts de sucesso/erro
+import { useToast } from '@/components/ui/ToastProvider';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Progress } from '@/components/ui/progress'; // Barra de progresso (Radix + shadcn)
+import { Progress } from '@/components/ui/progress';
 
-/** Mini spinner visual reutilizável para os botões */
 function Spinner() {
   return (
     <span
@@ -32,7 +21,6 @@ function Spinner() {
 }
 
 export default function BookDetailsPage() {
-  /** Obtém o id da rota /books/[id] */
   const params = useParams<{ id: string | string[] }>();
   const id = useMemo(
     () => (Array.isArray(params.id) ? params.id[0] : params.id),
@@ -43,10 +31,17 @@ export default function BookDetailsPage() {
   const { state, deleteBook } = useBooks();
   const { showToast } = useToast();
 
-  /** Busca o livro no estado global */
-  const maybeBook: Book | undefined = state.books.find((b) => b.id === id);
+  // Hooks SEMPRE no topo
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isReading, setReading] = useState(false);
+  const [isBack, setBack] = useState(false);
+  const [isEditing, setEditing] = useState(false);
+  const [isDeleting, setDeleting] = useState(false);
 
-  /** Se não encontrar, mostra uma tela simples de “não encontrado” */
+  // Busca o livro
+  const maybeBook = state.books.find((b) => b.id === id);
+
+  // Guard clause: não encontrado
   if (!maybeBook) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-8">
@@ -68,19 +63,9 @@ export default function BookDetailsPage() {
     );
   }
 
-  /** A partir daqui já temos o livro */
+  // ✅ A partir daqui, fixamos um alias não-nulo
   const book: Book = maybeBook;
 
-  /** Estado do diálogo de confirmação de exclusão */
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  /** Estados de carregamento por ação (para trocar rótulo → spinner) */
-  const [isReading, setReading] = useState(false);
-  const [isBack, setBack] = useState(false);
-  const [isEditing, setEditing] = useState(false);
-  const [isDeleting, setDeleting] = useState(false);
-
-  /** Calcula o % de progresso (clamp 0–100) */
   const pct =
     typeof book.pages === 'number' &&
     book.pages > 0 &&
@@ -88,14 +73,13 @@ export default function BookDetailsPage() {
       ? Math.min(100, Math.round((book.currentPage / book.pages) * 100))
       : null;
 
-  /** Ao clicar no botão Excluir (fora do diálogo), abre o modal */
   function handleDeleteClick() {
     setConfirmOpen(true);
   }
 
-  /** Confirma exclusão dentro do modal */
+  // Aceita ids/strings => evita capturar algo possivelmente undefined
   function confirmDelete() {
-    setDeleting(true); // ativa spinner no botão “Excluir” da barra de ações
+    setDeleting(true);
     deleteBook(book.id);
     setConfirmOpen(false);
     showToast({
@@ -103,12 +87,11 @@ export default function BookDetailsPage() {
       message: `“${book.title}” foi removido.`,
       variant: 'success',
     });
-    router.push('/library'); // navega e desmonta a página (spinners somem naturalmente)
+    router.push('/library');
   }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Navegação hierárquica */}
       <Breadcrumbs
         items={[
           { label: 'Início', href: '/' },
@@ -117,7 +100,6 @@ export default function BookDetailsPage() {
         ]}
       />
 
-      {/* Ações principais com estados de carregamento */}
       <div className="mb-4 flex gap-2">
         {book.fileUrl && (
           <Link
@@ -192,11 +174,9 @@ export default function BookDetailsPage() {
         </button>
       </div>
 
-      {/* Capa + informações do livro */}
       <div className="flex items-start gap-4">
         {book.cover ? (
-          // Dica: aqui você pode trocar para <Image /> do next com normalização de URL,
-          // mas mantendo <img> simples funciona.
+          // Substitua por <Image /> se quiser evitar o warning do Next
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={book.cover}
@@ -214,25 +194,21 @@ export default function BookDetailsPage() {
             {typeof book.year === 'number' ? `• ${book.year}` : ''}
           </p>
 
-          {/* Metadados */}
           <div className="mt-2 space-y-1 text-sm">
             {book.genre && <p>Gênero: {book.genre}</p>}
             {book.status && <p>Status: {book.status}</p>}
 
-            {/* Avaliação em estrelas (texto com ícones).
-               Se quiser, posso trocar por um componente ReadOnlyStars. */}
             {typeof book.rating === 'number' && book.rating > 0 && (
               <div className="mt-1">
                 <ReadOnlyStars
                   value={book.rating}
                   max={5}
                   showValue
-                  sizeRem={1.0}
+                  sizeRem={1}
                 />
               </div>
             )}
 
-            {/* ✅ Progresso visual (barra) */}
             {typeof pct === 'number' && (
               <div className="mt-2">
                 <div className="flex items-center justify-between text-sm">
@@ -243,7 +219,6 @@ export default function BookDetailsPage() {
               </div>
             )}
 
-            {/* Página atual / total */}
             {typeof book.pages === 'number' &&
               typeof book.currentPage === 'number' && (
                 <p>
@@ -255,7 +230,6 @@ export default function BookDetailsPage() {
         </div>
       </div>
 
-      {/* Sinopse e Notas */}
       {book.synopsis && (
         <p className="mt-6 whitespace-pre-wrap">{book.synopsis}</p>
       )}
@@ -266,7 +240,6 @@ export default function BookDetailsPage() {
         </>
       )}
 
-      {/* Diálogo de confirmação para excluir */}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
