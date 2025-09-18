@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* tokens globais */
+:root {
+  --fg: #0f172a; /* texto escuro */
+
+  /* degradê pêssego gold sofisticado */
+  --bg-gradient: linear-gradient(
+    120deg,
+    #F0E442 0%,    /* pessego bebê perolado */
+    #f4f8bb 25%,   /* pessego suave */
+    #e0f48f 50%,   /* pêssego médio elegante */
+    #c4f7d0 75%,   /* pêssego-dourado */
+    #E69F00 100%   /* champagne dourado */
+  );
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
