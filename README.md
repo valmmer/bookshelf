@@ -1,6 +1,6 @@
 # 📚 BookShelf — sua estante digital (Next.js 15 + React 19 + Tailwind 4)
 
-Uma aplicação moderna para gerenciar sua biblioteca pessoal: cadastre livros, envie PDF/capa, acompanhe o progresso de leitura e leia PDFs no próprio navegador com um leitor acessível e performático.
+Aplicação moderna para gerenciar sua biblioteca pessoal: cadastre livros, envie PDF/capa, acompanhe o progresso de leitura e leia PDFs no próprio navegador com um leitor acessível e performático.
 
 > **Stack**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS v4, Radix/shadcn (Progress/Dialog), React Hook Form + Zod, react‑pdf, framer‑motion.
 
