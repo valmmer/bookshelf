@@ -11,10 +11,9 @@ export type ReadingStatus =
   | 'ABANDONADO';
 
 /**
- * Interface principal (entidade persistida).
+ * Interface principal (entidade persistida no store/localStorage).
  * Campos opcionais deixam o app resiliente a rascunhos/migrações.
  */
-// src/types/book.ts
 export interface Book {
   id: string;
   title: string;
@@ -25,12 +24,29 @@ export interface Book {
   pages?: number;
   currentPage?: number;
   rating?: number;
-  status?: 'QUERO_LER' | 'LENDO' | 'LIDO' | 'PAUSADO' | 'ABANDONADO';
+
+  status?: ReadingStatus;
+
+  /** URL ou caminho relativo da capa */
   cover?: string;
+
+  /** URL ou caminho relativo do PDF (/ebooks/...) */
   fileUrl?: string;
+
+  /** Sinopse opcional do livro */
+  synopsis?: string;
+
+  /** ISBN opcional */
+  isbn?: string;
+
+  /** Notas pessoais */
+  notes?: string;
 
   /** Data de criação (controlada pelo store/localStorage) */
   createdAt: Date;
+
+  /** Data da última atualização */
+  updatedAt: Date;
 }
 
 /** Lista pré-definida de gêneros (pode expandir) */
@@ -59,7 +75,9 @@ export type Genre = (typeof GENRES)[number];
 /* ------------------------------------------------------------------ */
 
 /** Para criação: sem id; você pode deixar defaults no formulário */
-export type NewBook = Omit<Book, 'id'> & { id?: never };
+export type NewBook = Omit<Book, 'id' | 'createdAt' | 'updatedAt'> & {
+  id?: never;
+};
 
 /** Para update: id obrigatório + parciais */
 export type BookPatch = Partial<Book> & { id: string };
@@ -167,7 +185,7 @@ export function normalizePdfPath(u?: string | null): string | null {
 }
 
 /* ------------------------------------------------------------------ */
-/* Type guards (opc) — úteis para checagens antes de ações             */
+/* Type guards — úteis para checagens antes de ações                   */
 /* ------------------------------------------------------------------ */
 
 export function hasFile(book: Book): book is Book & { fileUrl: string } {

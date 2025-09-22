@@ -1,18 +1,12 @@
-// src/components/Header.tsx
+// src/components/layout/Header.tsx
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import MeteorShower from '@/components/fx/MeteorShower'; // 👈 importa o efeito
 
-/**
- * Header com:
- * - mesmo gradiente do Footer (acolhedor)
- * - barra de progresso no topo durante a navegação
- * - micro-animações em links
- * - versão mobile com menu deslizante
- */
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
@@ -52,7 +46,6 @@ export default function Header() {
       if (timerRef.current) clearInterval(timerRef.current);
     }, 300);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   const handleNav = (href: string) => (e: React.MouseEvent) => {
@@ -75,15 +68,20 @@ export default function Header() {
     <header
       className={[
         'sticky top-0 z-40 border-b',
-        // ⬇️ Mesmo gradiente do Footer (claro e dark)
         'bg-gradient-to-r from-sky-50 via-indigo-50 to-pink-50',
         'dark:from-gray-800 dark:via-gray-900 dark:to-gray-800',
         'transition-shadow duration-300',
+        'relative overflow-hidden', // 👈 container para meteoros
         scrolled ? 'shadow-sm' : 'shadow-none',
       ].join(' ')}
       aria-label="Barra de navegação"
     >
-      {/* Barra de progresso (cor harmonizada) */}
+      {/* 🌠 Meteors: decorativo, não bloqueia clique */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <MeteorShower />
+      </div>
+
+      {/* Barra de progresso (fica por cima dos meteoros) */}
       <AnimatePresence>
         {isNavigating && (
           <motion.div
@@ -92,13 +90,13 @@ export default function Header() {
             animate={{ width: `${progress}%`, opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="pointer-events-none absolute left-0 top-0 h-[3px] w-0 bg-sky-700 dark:bg-sky-300"
+            className="pointer-events-none absolute left-0 top-0 h-[3px] bg-sky-700 dark:bg-sky-300"
           />
         )}
       </AnimatePresence>
 
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
-        {/* Logo */}
+      {/* Conteúdo principal (z-10) */}
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
         <motion.div
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -130,7 +128,6 @@ export default function Header() {
                 whileHover={{ y: -1 }}
               >
                 {item.label}
-                {/* sublinhado sutil */}
                 <span
                   className={[
                     'absolute -bottom-1 left-0 h-[2px] w-full rounded',
@@ -138,15 +135,6 @@ export default function Header() {
                   ].join(' ')}
                   aria-hidden
                 />
-                {!active && (
-                  <motion.span
-                    layoutId="nav-underline"
-                    className="absolute -bottom-1 left-0 h-[2px] w-0 rounded bg-sky-700 dark:bg-sky-300"
-                    whileHover={{ width: '100%' }}
-                    transition={{ duration: 0.2 }}
-                    aria-hidden
-                  />
-                )}
               </motion.a>
             );
           })}
@@ -192,7 +180,7 @@ export default function Header() {
         </button>
       </div>
 
-      {/* Navegação mobile (com o mesmo fundo) */}
+      {/* Menu mobile */}
       <AnimatePresence initial={false}>
         {isMenuOpen && (
           <motion.nav
@@ -202,11 +190,7 @@ export default function Header() {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className={[
-              'md:hidden overflow-hidden border-t px-4 py-3',
-              'bg-gradient-to-r from-sky-50 via-indigo-50 to-pink-50',
-              'dark:from-gray-800 dark:via-gray-900 dark:to-gray-800',
-            ].join(' ')}
+            className="relative z-10 md:hidden overflow-hidden border-t px-4 py-3 bg-gradient-to-r from-sky-50 via-indigo-50 to-pink-50 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800"
           >
             <ul className="space-y-2">
               {navItems.map((item) => (
@@ -223,10 +207,6 @@ export default function Header() {
           </motion.nav>
         )}
       </AnimatePresence>
-
-      <span className="sr-only" aria-live="polite">
-        {isNavigating ? 'Carregando…' : 'Pronto'}
-      </span>
     </header>
   );
 }

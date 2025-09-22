@@ -1,3 +1,4 @@
+// src/app/books/[id]/read/page.tsx
 'use client';
 
 import dynamic from 'next/dynamic';
@@ -22,7 +23,18 @@ export default function ReadBookPage() {
 
   const { state } = useBooks();
   const [isClient, setIsClient] = useState(false);
+
+  // garante execução só no client
   useEffect(() => setIsClient(true), []);
+
+  // 🟡 ativa “modo leitor” (esconde Header/Footer e remove paddings do main)
+  useEffect(() => {
+    if (!isClient) return;
+    document.body.dataset.reader = '1';
+    return () => {
+      delete document.body.dataset.reader;
+    };
+  }, [isClient]);
 
   const book = state.books.find((b) => b.id === id);
 
@@ -40,7 +52,8 @@ export default function ReadBookPage() {
   if (!isClient) return null;
 
   return (
-    <main className="flex h-[calc(100vh-140px)] flex-col px-4 py-4 sm:px-6">
+    // 🟢 ocupa a viewport inteira (sem subtrair altura fixa do footer)
+    <main className="flex min-h-[100dvh] flex-col px-4 py-4 sm:px-6">
       <Breadcrumbs
         items={[
           { label: 'Início', href: '/' },
@@ -76,13 +89,10 @@ export default function ReadBookPage() {
           </a>
         </div>
       </header>
-
-      {/* Passa o valor salvo; o PDFReader normaliza */}
       <div className="flex-1">
         <PDFReader
           book={book}
           fileUrl={book.fileUrl ?? ''}
-          /* 👇 se currentPage não existir, começa na 1 */
           initialPage={
             typeof book.currentPage === 'number' && book.currentPage > 0
               ? book.currentPage

@@ -1,217 +1,242 @@
-# BookShelf
+# 📚 BookShelf — sua estante digital (Next.js 15 + React 19 + Tailwind 4)
 
-Aplicação **Next.js** para gerenciar sua biblioteca pessoal com uma experiência moderna de UX e foco em acessibilidade. Permite cadastrar livros, ler PDFs no navegador, acompanhar progresso e organizar sua coleção.
+Uma aplicação moderna para gerenciar sua biblioteca pessoal: cadastre livros, envie PDF/capa, acompanhe o progresso de leitura e leia PDFs no próprio navegador com um leitor acessível e performático.
 
----
-
-## ✨ Principais funcionalidades
-
-- **Biblioteca** com busca, filtros (status/gênero) e ordenação.
-- **Cadastro/edição** de livros (capa, autor, páginas, status, notas, PDF etc.).
-- **Leitor de PDF integrado** (react-pdf) com:
-  - retomada automática da **última página lida**;
-  - **salvamento de progresso** no `localStorage` e no store global;
-  - **atalhos de teclado** (← → Home End + -);
-  - **zoom** e paginação;
-  - **temas acessíveis** (paper, creme, sépia, escuro e **alto contraste**).
-- **KPIs** (total, lendo, lidos, páginas lidas) na página inicial, com cartões animados.
-- **UX polida**: transições suaves (framer-motion), skeletons, toasts, diálogos de confirmação, barra de progresso de navegação no header.
+> **Stack**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS v4, Radix/shadcn (Progress/Dialog), React Hook Form + Zod, react‑pdf, framer‑motion.
 
 ---
 
-## ♿ Acessibilidade & Inclusão (inclui daltonismo)
+## ✨ Principais recursos
 
-- Leitor com **temas** que melhoram contraste (ex.: *Escuro* e **Alto contraste**).
-- Botões e links com foco visível, rótulos ARIA e atalhos de teclado.
-- Preferência por **texto claro em fundo escuro** nos temas para reduzir cansaço visual.
-- Estrutura semântica (header/main/footer) e componentes com estados (`aria-busy`, `aria-pressed`, etc.).
-
-> **Dica para daltonismo:** use o tema **Alto contraste** no leitor. O fundo preto com texto branco e bordas claras reduz ambiguidade de cor e melhora legibilidade.
-
----
-
-## 🧱 Stack
-
-- **Next.js 15** (App Router)
-- **TypeScript**
-- **Tailwind CSS**
-- **framer-motion** (animações)
-- **react-pdf** (visualização de PDF)
-- **Radix/shadcn** (UI primitives como `Progress`, `AlertDialog`)
+- **Dashboard** com KPIs (Total, Lendo, Lidos, Páginas lidas) e cards de progresso
+- **Biblioteca** com busca, filtro por status/gênero, ordenação e “com PDF”
+- **CRUD de livros** com formulários validados por **Zod** (RHF)
+- **Uploads locais** (dev): API `/api/upload` salva PDFs em `public/ebooks` e capas em `public/covers`
+- **Leitor de PDF** com:
+  - tema (Paper/Creme/Sépia/Escuro/Alto Contraste)
+  - zoom, navegação por teclado (← → Home End, + -)
+  - salva a **página atual** no store/localStorage (retoma de onde parou)
+- **Store global** própria (`useBooks`) com persistência em `localStorage`
+- **Acessibilidade**: foco/aria labels, cores contrastadas, feedback visual, toasts
+- **UI/UX**: skeletons, animações sutis, mensagens acolhedoras, botões de ação com loading
 
 ---
 
-## 📦 Pré‑requisitos
-
-- Node 18+
-- npm ou pnpm ou yarn
-
----
-
-## 🚀 Instalação & Execução
-
-```bash
-# instalar dependências
-npm install
-
-# copiar o worker do PDF para /public (garante que o react-pdf use a versão correta)
-# opção 1 – copiar do pdfjs-dist **que o react-pdf usa internamente**
-mkdir -p public && cp node_modules/react-pdf/node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/
-
-# iniciar o dev server
-npm run dev
-```
-
-Acesse: `http://localhost:3000`
-
-> **Importante (PDF Worker):** manter a **mesma versão** de `pdfjs-dist` do `react-pdf`. Copiar o worker da pasta de `react-pdf` evita erro “API version … does not match Worker version …”. O código do leitor configura:
->
-> ```ts
-> pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-> ```
-
----
-
-## 🗂️ Estrutura de pastas (essencial)
+## 🏗️ Estrutura do projeto (simplificada)
 
 ```
 src/
-├─ app/
-│  ├─ page.tsx                 # Home (KPIs + Atualmente lendo)
-│  ├─ library/page.tsx         # Listagem, filtros e cartões
-│  └─ books/
-│     ├─ new/page.tsx          # Formulário de novo livro
-│     ├─ [id]/page.tsx         # Detalhes do livro + ações
-│     └─ [id]/read/page.tsx    # Leitor de PDF
-├─ components/
-│  ├─ header.tsx               # Header com transições e progress bar
-│  ├─ layout/Footer.tsx        # Footer com gradiente e animações
-│  ├─ book/BookCard.tsx        # Cartão do livro (capa, tags, rating)
-│  ├─ book/ReadOnlyStars.tsx   # Estrelas de leitura (somente display)
-│  ├─ reader/PDFReader.tsx     # **Leitor de PDF** (temas, atalhos, progresso)
-│  ├─ navigation/Breadcrumbs.tsx
-│  ├─ ui/ConfirmDialog.tsx     # Diálogo de confirmação (Radix)
-│  ├─ ui/ToastProvider.tsx     # Toaster global
-│  ├─ ui/progress.tsx          # Progress (Radix/shadcn)
-│  ├─ actions/AddBookFab.tsx   # Botão flutuante “Novo” com animação
-│  └─ skeleton/…               # Skeletons reutilizáveis
-├─ data/
-│  ├─ store.ts                 # Persistência (localStorage) CRUD
-│  └─ seed.ts                  # (Opcional) dados de exemplo
-├─ store/books.tsx             # Contexto global (reducer + persistência)
-└─ types/book.ts               # Tipos (Book, ReadingStatus, Genre)
+  app/
+    layout.tsx              # layout raiz (Header/Footer/Providers)
+    page.tsx                # dashboard (home)
+    library/page.tsx        # listagem + filtros
+    books/
+      new/page.tsx          # criar livro (upload PDF obrigatório)
+      [id]/page.tsx         # detalhes do livro
+      [id]/edit/page.tsx    # editar (upload opcional / remover capa)
+      [id]/read/page.tsx    # leitor de PDF
+    api/upload/route.ts     # salva arquivos localmente (dev)
+  components/
+    book/BookCard.tsx
+    book/CoverPreview.tsx
+    book/RatingStars.tsx
+    reader/PDFReader.tsx
+    ui/ConfirmDialog.tsx
+    ui/ToastProvider.tsx
+    navigation/Breadcrumbs.tsx
+    dashboard/KpiCard.tsx
+    skeleton/Skeleton.tsx
+  store/books.tsx           # contexto + reducer + persistência
+  types/book.ts             # tipos e utils de domínio (normalize/sanitize)
+  features/books/schema.ts  # schema Zod dos formulários
+  lib/cn.ts                 # utilitário clsx/twMerge (se aplica)
+public/
+  ebooks/                   # PDFs salvos localmente (dev)
+  covers/                   # imagens de capa (dev)
 ```
 
-Arquivos estáticos:
+---
+
+## 🚀 Começando
+
+### 1) Pré-requisitos
+
+- **Node.js 18+**
+- **pnpm** (recomendado) ou npm/yarn
+
+### 2) Instalar dependências
+
+```bash
+pnpm i
+# ou
+npm i
 ```
-public/
-├─ pdf.worker.min.mjs          # worker do PDF (copiado no pós‑install)
-├─ ebooks/…                    # seus PDFs (ex.: /ebooks/meu-livro.pdf)
-└─ covers/…                    # capas locais (opcional)
+
+### 3) Rodar em desenvolvimento
+
+```bash
+pnpm dev
+# ou
+npm run dev
 ```
+
+Acesse em `http://localhost:3000`.
+
+> **Windows/PowerShell**: se aparecer “`next` não é reconhecido”, reinstale dependências (`npm i`) na raiz do projeto e rode o script via `npm run dev` (ele chama o bin do `node_modules/.bin/next`).
+
+---
+
+## 🧪 Scripts úteis
+
+| Script  | Descrição         |
+| ------- | ----------------- |
+| `dev`   | Next dev          |
+| `build` | Build de produção |
+| `start` | Servir build      |
+| `lint`  | Eslint            |
 
 ---
 
 ## ⚙️ Configurações importantes
 
-### 1) next/image (caso use `Image` com URLs externas)
-Adicione domínios de capa em `next.config.js` (ex.: imagens da Amazon):
+### `next.config.js` (imagens locais com `next/image`)
 
 ```js
-module.exports = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   images: {
     remotePatterns: [
-      { protocol: 'https', hostname: 'm.media-amazon.com' },
       { protocol: 'http', hostname: 'localhost' },
+      { protocol: 'https', hostname: '**' },
     ],
+    // ou: unoptimized: true
   },
 };
+export default nextConfig;
 ```
 
-Se usar `<img>` simples, não precisa desta configuração.
+### `tsconfig.json`
 
-### 2) React‑PDF
-- Worker em `/public/pdf.worker.min.mjs`.
-- Evite SSR: o `PDFReader` faz **import dinâmico só no cliente**.
-- Erros comuns e soluções:
-  - **DOMMatrix is not defined** → importar `react-pdf` apenas no cliente.
-  - **Worker version mismatch** → copiar worker da pasta do `react-pdf`.
+- `moduleResolution: "bundler"`
+- `baseUrl: "src"` e `paths: { "@/*": ["./*"] }`
 
-### 3) Persistência
-- Chave: `bookshelf:books:v1` (localStorage)
-- O módulo `src/data/store.ts` cuida de ler/gravar. Você pode **remover** o `seed.ts` se não quiser dados de exemplo.
+### `tailwind`
+
+- Tailwind v4 (postcss) já configurado, classes utilitárias em todo o app.
 
 ---
 
-## 🧭 Fluxo de uso
+## 📦 Upload local (dev)
 
-1. **Adicionar livro** em `/books/new`.
-   - Se o PDF estiver em `public/ebooks/`, use o caminho começando por `/ebooks/...`.
-   - A capa pode ser URL externa ou arquivo em `public/covers/`.
-2. **Listar e filtrar** em `/library`.
-3. Abrir **detalhes** em `/books/[id]`: capa, metadados, progresso e ações.
-4. Clicar em **Ler** → `/books/[id]/read`: o leitor abre **na última página lida**.
+A rota `POST /api/upload` aceita `multipart/form-data` com campos:
 
-> Ao começar a ler (página > 1), o status pode ser promovido de `QUERO_LER` para `LENDO` (configurável no `PDFReader`/store).
+- `pdf` **(obrigatório na criação)** — salvo em `public/ebooks`
+- `cover` _(opcional)_ — salva em `public/covers`
 
----
+Retorno:
 
-## 🔐 Acessibilidade no leitor (daltônicos)
+```json
+{
+  "id": "uuid",
+  "pdfUrl": "/ebooks/<file>.pdf",
+  "coverUrl": "/covers/<file>.jpg"
+}
+```
 
-- Selecione **Tema** na toolbar do leitor:
-  - *Paper* (padrão), *Creme*, *Sépia* → tons suaves para sessões longas.
-  - *Escuro* → fundo escuro c/ texto claro.
-  - **Alto contraste** → fundo preto e texto branco (recomendado para diferentes tipos de daltonismo).
-- Atalhos (↑ conforto):
-  - `←` / `→`: anterior/próxima página
-  - `+` / `-`: zoom in/out
-  - `Home` / `End`: primeira/última página
+> **Produção (Vercel)**: o filesystem é efêmero. Para persistir, troque para um provedor de storage (Vercel Blob, S3, etc.) e ajuste o `PDFReader`/URLs.
 
 ---
 
-## 🧩 Dicas de desenvolvimento
+## 🧠 State & Tipos
 
-- **Evite loops** de renderização usando somente **funções estáveis** do store nas dependências de hooks (`updateBook`).
-- **Debounce** ao salvar progresso reduz escrita excessiva em localStorage/store.
-- Use `prefers-reduced-motion` se quiser reduzir animações (opcional via Tailwind `motion-safe:` já aplicado em alguns pontos).
+- `src/store/books.tsx`: reducer (`ADD/UPDATE/DELETE/HYDRATE`), normalização de status por `currentPage/pages` e persistência no `localStorage`.
+- `src/types/book.ts`: `Book`, `ReadingStatus`, `normalizeBook`, `sanitizeBook`, `normalizeFileUrl`, _guards_ e utilitários.
+- O store _clampa_ `currentPage ≤ pages` e ajusta `status` automaticamente (`LENDO`/`LIDO`).
 
 ---
 
-## 🛠️ Solução de problemas
+## 📝 Formulários (RHF + Zod)
 
-**1) `Invalid src prop ... next/image ... hostname "localhost"`**
-- Adicione `localhost`/domínios em `next.config.js` (ou use `<img>` simples).
+- `features/books/schema.ts` define `bookFormSchema` e `BookFormValues`.
+- Padrão usado no **new/edit** para evitar conflito com `SubmitHandler`:
+  - `useForm<BookFormValues>({ resolver: zodResolver(schema) as Resolver<BookFormValues> })`
+  - `const onValid = (values: BookFormValues) => { ... }`
+  - `const onSubmit: FormEventHandler<HTMLFormElement> = (e) => { e.preventDefault(); void (form.handleSubmit as (cb: (d: BookFormValues) => unknown) => any)(onValid)(e); }`
 
-**2) `DOMMatrix is not defined`**
-- Garanta que `react-pdf` é carregado **apenas no cliente** (import dinâmico já implementado no `PDFReader`).
+Campos com `valueAsNumber` nos inputs numéricos para coerção segura.
 
-**3) `The API version X does not match the Worker version Y`**
-- Copie o worker de `node_modules/react-pdf/node_modules/pdfjs-dist/build/pdf.worker.min.mjs` para `/public`.
+---
 
-**4) `Maximum update depth exceeded`**
-- Não inclua objetos do contexto inteiro nas dependências dos efeitos; use apenas `updateBook` (função estável) e valores primitivos.
+## 📖 Leitor de PDF (`react-pdf`)
 
-**5) Página do leitor volta para 1**
-- Garanta que você passa `initialPage={book.currentPage ?? 1}` **ou** que o `localStorage` possui a chave `reading_progress_${book.id}`.
+- Carregado só no cliente via `dynamic(..., { ssr: false })`
+- Worker local em `/public/pdf.worker.min.mjs`
+- Salva progresso por livro (`reading_progress_<id>`) e no store (`updateBook` debounced)
+- Teclas: **←/→**, **+/-**, **Home/End**
+- Temas guardados em `localStorage` (`reader_theme`)
+
+> **Dica**: para ocupar a tela sem sobrepor o rodapé, usamos `min-h-screen` no layout e na página de leitura um container `h-[calc(100vh-140px)]` (ajuste esse offset se seu Header/Footer mudar de altura).
+
+---
+
+## ♿ Acessibilidade
+
+- Labels/aria nos botões/inputs, contraste em temas, “aria-busy” nos botões com loading.
+- Navegação por teclado no leitor e focos visíveis nos componentes clicáveis.
+- Mensagens claras nos estados vazios/erros.
+
+---
+
+## 🚀 Performance & DX
+
+- `next/font` para fontes otimizadas
+- Suspense/skeletons em listas e no leitor
+- `useMemo`/`useCallback` nos cálculos de KPIs e filtros
+- Evitamos re-renders no store expondo apenas funções estáveis
+
+---
+
+## 🧯 Troubleshooting
+
+- **Imagem com `next/image` deu erro de hostname**: adicione `localhost` (ou use `unoptimized: true`) no `next.config.js`.
+- **“next não é reconhecido” no Windows**: rode `npm i` na raiz e use `npm run dev`.
+- **Footer sobre o leitor**: ajuste o `calc(100vh - XXXpx)` da página `read`, ou transforme o Footer em `sticky`/`static` conforme sua UI.
+- **Form mostra `NaN` no rating**: garanta `register('rating', { valueAsNumber: true })` + fallback `value={rating ?? 0}` no `RatingStars`.
 
 ---
 
 ## 🗺️ Roadmap (sugestões)
 
-- Upload de PDFs (drag & drop) com cópia automática para `/public/ebooks`.
-- Sincronização opcional em nuvem (ex.: Supabase/Firestore).
-- Estante com **coleções**/estrelas/etiquetas múltiplas.
-- Estatísticas por período (gráficos).
-- Exportar/importar coleção (JSON).
+- Autenticação (NextAuth)
+- Sincronizar dados em um DB (Postgres/Prisma)
+- Upload em storage (Vercel Blob/S3)
+- Coleções, tags e metas de leitura
+- Importação por ISBN (Google Books API)
+- Notas destacáveis no PDF
+
+---
+
+## 🤝 Contribuindo
+
+1. Faça um fork
+2. Crie um branch: `feat/minha-feature`
+3. Commit: `feat: descrição curta`
+4. Abra um PR
+
+---
+
+## 👥 Participantes
+
+- Valmer Mariano
+- Cassia Deiro
+- Catarine Formiga
+- Paola Pontes
+- Samille Ervely
+
+> Quer adicionar cargo/contato de cada participante? Me passe os detalhes e eu atualizo aqui. 😉
 
 ---
 
 ## 📄 Licença
 
-Este projeto é distribuído sob a licença MIT. Sinta-se à vontade para usar e adaptar.
-
----
-
-### 💬 Suporte
-Ficou com dúvida ou quer evoluir algo específico? Abra uma issue ou comente o que deseja melhorar — a ideia é que este BookShelf seja seu **guia de leitura acolhedor** 😊
-
+Este projeto é distribuído sob a licença MIT. Consulte `LICENSE` (opcional) para mais detalhes.

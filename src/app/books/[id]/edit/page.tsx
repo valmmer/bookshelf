@@ -1,7 +1,8 @@
 // src/app/books/[id]/edit/page.tsx
+// src/app/books/[id]/edit/page.tsx
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm, type SubmitHandler } from 'react-hook-form';
@@ -16,7 +17,9 @@ import { bookFormSchema, type BookFormValues } from '@/features/books/schema';
 import type { Book } from '@/types/book';
 
 export default function EditBookPage() {
-  // 1) Normaliza o id (params.id pode vir como string | string[])
+  // -----------------------------
+  // 1) ID normalizado a partir da URL
+  // -----------------------------
   const params = useParams<{ id: string | string[] }>();
   const id = useMemo(
     () => (Array.isArray(params.id) ? params.id[0] : params.id),
@@ -27,7 +30,9 @@ export default function EditBookPage() {
   const { state, updateBook } = useBooks();
   const { showToast } = useToast();
 
-  // 2) Busca o livro; pode ser undefined → fazemos early return (type guard)
+  // -----------------------------
+  // 2) Busca o livro; fallback caso não exista
+  // -----------------------------
   const maybeBook: Book | undefined = state.books.find((b) => b.id === id);
   if (!maybeBook) {
     return (
@@ -46,19 +51,34 @@ export default function EditBookPage() {
       </main>
     );
   }
+  const book = maybeBook;
 
-  // Daqui pra baixo, "book" é 100% Book (evita “possibly undefined” em closures)
-  const book: Book = maybeBook;
+  // -----------------------------
+  // 3) Estados locais para upload (fora do schema)
+  // -----------------------------
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | undefined>(
+    book.cover // começa mostrando a capa atual se existir
+  );
 
-  // 3) React Hook Form + Zod
-  //    - defaultValues populados com os dados do livro
-  //    - valueAsNumber nos campos numéricos (converte string → number)
+  useEffect(() => {
+    if (!coverFile) return;
+    const url = URL.createObjectURL(coverFile);
+    setCoverPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [coverFile]);
+
+  // -----------------------------
+  // 4) React Hook Form + Zod
+  //    (schema NÃO possui mais fileUrl nem cover URL obrigatória)
+  // -----------------------------
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-    watch,
     setValue,
+    watch,
   } = useForm<BookFormValues>({
     resolver: zodResolver(bookFormSchema),
     defaultValues: {
@@ -70,46 +90,103 @@ export default function EditBookPage() {
       currentPage: book.currentPage ?? 0,
       rating: book.rating,
       synopsis: book.synopsis,
-      cover: book.cover,
       status: book.status ?? 'QUERO_LER',
       isbn: book.isbn,
       notes: book.notes,
-      fileUrl: book.fileUrl, // ← novo: caminho/URL do PDF dentro de /public
+      // ❌ não colocamos fileUrl/cover aqui: agora são tratados via upload
     },
   });
 
-  // Observa valores reativos (para preview e estrelas)
-  const coverUrl = watch('cover');
   const rating = watch('rating');
 
-  // 4) Submit tipado: inclui "fileUrl" ao atualizar
-  const onSubmit: SubmitHandler<BookFormValues> = (values) => {
-    const updated: Book = {
-      ...book,
-      title: values.title,
-      author: values.author,
-      genre: values.genre,
-      year: values.year,
-      pages: values.pages,
-      currentPage: values.currentPage ?? 0,
-      rating: values.rating,
-      synopsis: values.synopsis,
-      cover: values.cover,
-      status: values.status,
-      isbn: values.isbn,
-      notes: values.notes,
-      fileUrl: values.fileUrl, // ← garante que salvamos o PDF
-    };
+  // -----------------------------
+  // 5) Submit
+  //    - Se usuário escolher um NOVO PDF, enviamos (com a capa, se houver)
+  //    - Se não escolher PDF, mantemos fileUrl atual
+  //    - Se escolher capa junto com PDF, a rota salvará e retornará coverUrl
+  //    - (A rota /api/upload atual exige PDF; portanto, troca de capa isolada
+  //       não é suportada — precisa selecionar PDF também. Mantemos capa antiga
+  //       se só a capa for escolhida sem PDF.)
+  // -----------------------------
+  const onSubmit: SubmitHandler<BookFormValues> = async (values) => {
+    try {
+      let finalFileUrl = book.fileUrl; // começa com o atual
+      let finalCoverUrl = book.cover;
 
-    updateBook(updated);
-    showToast({
-      title: 'Livro atualizado',
-      message: 'Alterações salvas.',
-      variant: 'success',
-    });
-    router.push(`/books/${book.id}`);
+      if (pdfFile) {
+        const fd = new FormData();
+        fd.append('pdf', pdfFile);
+        if (coverFile) fd.append('cover', coverFile);
+
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        if (!res.ok) {
+          let serverMsg = 'Falha no upload';
+          try {
+            const data = await res.json();
+            serverMsg = data?.error || data?.detail || serverMsg;
+          } catch {
+            try {
+              serverMsg = await res.text();
+            } catch {}
+          }
+          throw new Error(`(${res.status}) ${serverMsg}`);
+        }
+
+        const data = (await res.json()) as {
+          pdfUrl: string;
+          coverUrl?: string | null;
+        };
+        finalFileUrl = data.pdfUrl; // substitui PDF
+        if (data.coverUrl) finalCoverUrl = data.coverUrl; // substitui capa se enviada
+      } else {
+        // Sem novo PDF: se usuário escolheu capa sozinha, avisamos que não é suportado
+        if (coverFile) {
+          showToast({
+            title: 'Envio da capa não aplicado',
+            message: 'Para substituir a capa, selecione o novo PDF junto.',
+            variant: 'info',
+          });
+        }
+      }
+
+      const updated: Book = {
+        ...book,
+        title: values.title,
+        author: values.author,
+        genre: values.genre,
+        year: values.year,
+        pages: values.pages,
+        currentPage: values.currentPage ?? 0,
+        rating: values.rating,
+        synopsis: values.synopsis,
+        cover: finalCoverUrl,
+        status: values.status,
+        isbn: values.isbn,
+        notes: values.notes,
+        fileUrl: finalFileUrl,
+        updatedAt: new Date(),
+      };
+
+      updateBook(updated);
+      showToast({
+        title: 'Livro atualizado',
+        message: 'Alterações salvas.',
+        variant: 'success',
+      });
+      router.push(`/books/${book.id}`);
+    } catch (err: any) {
+      console.error(err);
+      showToast({
+        title: 'Erro ao salvar',
+        message: err?.message ?? 'Tente novamente.',
+        variant: 'error',
+      });
+    }
   };
 
+  // -----------------------------
+  // 6) UI
+  // -----------------------------
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
       {/* Breadcrumbs */}
@@ -141,8 +218,11 @@ export default function EditBookPage() {
       >
         {/* Preview da capa à esquerda */}
         <div>
-          <CoverPreview url={coverUrl} alt="Capa do livro" />
-          <p className="mt-2 text-xs text-slate-500">Preview da capa</p>
+          <CoverPreview url={coverPreviewUrl} alt="Capa do livro" />
+          <p className="mt-2 text-xs text-slate-500">
+            Pré-visualização da capa{' '}
+            {book.cover ? '(mostrando a atual se não enviar arquivo)' : ''}
+          </p>
         </div>
 
         {/* Campos */}
@@ -242,7 +322,6 @@ export default function EditBookPage() {
               <label className="mb-1 block text-sm font-medium">
                 Avaliação
               </label>
-              {/* input oculto para RHF manter o campo como number */}
               <input
                 type="hidden"
                 {...register('rating', { valueAsNumber: true })}
@@ -279,42 +358,39 @@ export default function EditBookPage() {
             </div>
           </div>
 
-          {/* URL da capa */}
+          {/* Substituir PDF (opcional) */}
           <div>
             <label className="mb-1 block text-sm font-medium">
-              URL da capa
+              Substituir PDF (opcional)
             </label>
             <input
-              {...register('cover')}
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
               className="w-full rounded-md border px-3 py-2"
-              placeholder="https://..."
             />
-            {errors.cover && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.cover.message as string}
-              </p>
-            )}
+            <p className="mt-1 text-xs text-slate-600">
+              PDF atual: <code className="break-all">{book.fileUrl}</code>. Se
+              selecionar um novo, o arquivo será salvo em{' '}
+              <code>public/ebooks</code> e o link será atualizado.
+            </p>
           </div>
 
-          {/* 🔽 NOVO: Caminho do PDF dentro do projeto */}
+          {/* Substituir Capa (opcional, junto com PDF) */}
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Arquivo PDF (caminho no projeto)
+              Substituir Capa (opcional)
             </label>
             <input
-              {...register('fileUrl')}
+              type="file"
+              accept="image/*"
+              onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
               className="w-full rounded-md border px-3 py-2"
-              placeholder="/ebooks/dezesseis-luas-kami-garcia.pdf"
             />
-            <p className="mt-1 text-xs text-slate-500">
-              O arquivo deve estar em <code>public/ebooks/</code>. Ex.:{' '}
-              <code>/ebooks/dezesseis-luas-kami-garcia.pdf</code>
+            <p className="mt-1 text-xs text-slate-600">
+              Para aplicar a nova capa, envie-a juntamente com um novo PDF. Caso
+              contrário, manteremos a capa atual.
             </p>
-            {errors.fileUrl && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.fileUrl.message as string}
-              </p>
-            )}
           </div>
 
           {/* ISBN */}

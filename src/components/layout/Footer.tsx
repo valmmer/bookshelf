@@ -19,7 +19,7 @@ export default function Footer() {
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
   return (
-    <footer className="relative border-t bg-gradient-to-r from-sky-50 via-indigo-50 to-pink-50 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800 transition-colors">
+    <footer className="relative border-t bg-gradient-to-r from-sky-200 via-indigo-200 to-pink-200 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 transition-colors">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-6 text-sm text-slate-600 dark:text-slate-300 md:flex-row">
         {/* Texto institucional com efeito suave */}
         <p className="text-center md:text-left animate-fadeIn">

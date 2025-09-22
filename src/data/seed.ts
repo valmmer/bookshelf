@@ -1,43 +1,52 @@
 // src/data/store.ts
+// src/data/store.ts
 'use client';
 
 import type { Book } from '@/types/book';
 
 const STORAGE_KEY = 'bookshelf:books:v1';
 
-/** Converte um objeto cru (do JSON) para o tipo Book, re-hidratando o Date. */
-function reviveBook(raw: any): Book {
-  return {
-    ...raw,
-    createdAt: raw?.createdAt ? new Date(raw.createdAt) : new Date(),
-  };
+/** Re-hidrata datas e garante um objeto compatível com Book (sem usar `any`). */
+function reviveBook(raw: unknown): Book {
+  const obj =
+    typeof raw === 'object' && raw !== null
+      ? (raw as Record<string, unknown>)
+      : {};
+
+  const createdAtRaw = obj['createdAt'];
+  const createdAt =
+    createdAtRaw != null ? new Date(String(createdAtRaw)) : new Date();
+
+  // Dica: se quiser ser ainda mais estrito, valide campos essenciais aqui.
+  return { ...(obj as unknown as Book), createdAt };
 }
 
-/** Lê todos os livros do localStorage. */
+/** Lê todos os livros do localStorage (tolerante a JSON vazio/corrompido). */
 function readAll(): Book[] {
   if (typeof window === 'undefined') return [];
 
   const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return []; // 👉 Sem seed, apenas retorna vazio
-  }
+  if (!raw) return []; // sem seed: retorna vazio
 
   try {
-    const arr = JSON.parse(raw) as any[];
-    return Array.isArray(arr) ? arr.map(reviveBook) : [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(reviveBook);
   } catch {
-    return []; // 👉 Se corrompido, começa do zero
+    return []; // corrompido: começa do zero
   }
 }
 
-/** Escreve a lista completa no localStorage. */
+/** Serializa a lista inteira (normaliza createdAt para string ISO se for Date). */
 function writeAll(books: Book[]) {
   if (typeof window === 'undefined') return;
 
   const safe = books.map((b) => ({
     ...b,
     createdAt:
-      b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt,
+      (b as { createdAt?: unknown }).createdAt instanceof Date
+        ? (b as { createdAt: Date }).createdAt.toISOString()
+        : (b as { createdAt?: unknown }).createdAt,
   }));
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
@@ -71,7 +80,7 @@ export const store = {
   },
 
   reset() {
-    writeAll([]); // 👉 Reset agora só limpa tudo
+    writeAll([]); // reset = limpa tudo
   },
 
   replaceAll(books: Book[]) {

@@ -1,5 +1,10 @@
 'use client';
 
+// Página de criação de livro (modo simples):
+// - PDF OBRIGATÓRIO via upload (sem caminho local)
+// - Capa OPCIONAL via upload (removido o campo de URL)
+// - Mensagens claras e UX: botão salvar desabilita sem PDF
+
 import { useForm, type SubmitHandler, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
@@ -11,11 +16,16 @@ import RatingStars from '@/components/book/RatingStars';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { Progress } from '@/components/ui/progress';
 import { bookFormSchema, type BookFormValues } from '@/features/books/schema';
+import { useMemo, useState } from 'react';
 
 export default function NewBookPage() {
   const router = useRouter();
   const { addBook } = useBooks();
   const { showToast } = useToast();
+
+  // Estados locais para upload
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
 
   const {
     register,
@@ -23,7 +33,9 @@ export default function NewBookPage() {
     formState: { errors, isSubmitting },
     watch,
     setValue,
-    control, // ⬅️ precisamos expor o control para useWatch
+    control,
+    setError,
+    clearErrors,
   } = useForm<BookFormValues>({
     resolver: zodResolver(bookFormSchema),
     defaultValues: {
@@ -32,29 +44,21 @@ export default function NewBookPage() {
       genre: undefined,
       year: undefined,
       pages: undefined,
-      currentPage: 0, // ⬅️ NÃO entra no progresso
+      currentPage: 0,
       rating: undefined,
       synopsis: undefined,
-      cover: undefined,
-      status: 'QUERO_LER', // ⬅️ NÃO entra no progresso (tem default)
+      // ❌ removido: cover URL e fileUrl local
+      status: 'QUERO_LER',
       isbn: undefined,
       notes: undefined,
-      fileUrl: '', // ⬅️ string vazia = não preenchido
     },
   });
 
-  const coverUrl = watch('cover');
   const rating = watch('rating');
 
-  // ---------------------------
-  // PROGRESSO DE PREENCHIMENTO
-  // ---------------------------
-  // useWatch evita re-render de tudo; só dispara quando os campos mudam
+  // Progresso visual (só campos úteis do formulário)
   const values = useWatch({ control });
-
-  // 👇 Versão contando "campos úteis", ignorando defaults.
-  // Se quiser contar só obrigatórios, veja a variante logo abaixo (comentada).
-  const completion = (() => {
+  const completion = useMemo(() => {
     const checks = [
       !!values?.title?.trim(),
       !!values?.author?.trim(),
@@ -63,58 +67,99 @@ export default function NewBookPage() {
       typeof values?.pages === 'number' && values.pages > 0,
       typeof values?.rating === 'number' && values.rating > 0,
       !!values?.synopsis?.trim(),
-      !!values?.cover?.trim(),
       !!values?.isbn?.trim(),
       !!values?.notes?.trim(),
-      !!values?.fileUrl?.trim(),
-      // status e currentPage ficam de fora porque têm defaults
+      !!pdfFile, // 👈 agora conta o upload do PDF
     ];
     const total = checks.length;
     const filled = checks.filter(Boolean).length;
     return total ? Math.round((filled / total) * 100) : 0;
-  })();
+  }, [values, pdfFile]);
 
-  // 👉 Variante bem rígida (só os obrigatórios contam):
-  // const completion = (() => {
-  //   const checks = [
-  //     !!values?.title?.trim(),
-  //     !!values?.author?.trim(),
-  //     !!values?.fileUrl?.trim(),
-  //   ];
-  //   const total = checks.length;
-  //   const filled = checks.filter(Boolean).length;
-  //   return total ? Math.round((filled / total) * 100) : 0;
-  // })();
+  // Preview da capa: se houver upload, faz URL local temporária
+  const coverPreviewUrl = useMemo(() => {
+    if (!coverFile) return undefined;
+    return URL.createObjectURL(coverFile);
+  }, [coverFile]);
 
-  const onSubmit: SubmitHandler<BookFormValues> = (values) => {
-    const newBook = {
-      id: crypto.randomUUID(),
-      title: values.title,
-      author: values.author,
-      genre: values.genre,
-      year: values.year,
-      pages: values.pages,
-      currentPage: values.currentPage ?? 0,
-      rating: values.rating,
-      synopsis: values.synopsis,
-      cover: values.cover,
-      status: values.status,
-      isbn: values.isbn,
-      notes: values.notes,
-      // se o usuário digitou “/ebooks/arquivo.pdf” já vem certo;
-      // se digitou só “arquivo.pdf”, seu reader normaliza depois
-      fileUrl: values.fileUrl?.startsWith('/ebooks/')
-        ? values.fileUrl
-        : `/ebooks/${(values.fileUrl ?? '').replace(/^\/+/, '')}`,
-    };
+  // SUBMIT
+  const onSubmit: SubmitHandler<BookFormValues> = async (values) => {
+    try {
+      // ✅ PDF é obrigatório
+      if (!pdfFile) {
+        setError('title', { type: 'manual', message: '' }); // força re-render dos erros
+        showToast({
+          title: 'PDF obrigatório',
+          message: 'Selecione um arquivo em “Importar PDF”.',
+          variant: 'error',
+        });
+        return;
+      } else {
+        clearErrors();
+      }
 
-    addBook(newBook);
-    showToast({
-      title: 'Livro criado',
-      message: 'Cadastro realizado com sucesso.',
-      variant: 'success',
-    });
-    router.push(`/books/${newBook.id}`);
+      // 1) Sobe o(s) arquivo(s) para a API local (/api/upload)
+      const fd = new FormData();
+      fd.append('pdf', pdfFile);
+      if (coverFile) fd.append('cover', coverFile);
+
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        let serverMsg = 'Falha no upload';
+        try {
+          const data = await res.json();
+          serverMsg = data?.error || data?.detail || serverMsg;
+        } catch {
+          try {
+            serverMsg = await res.text();
+          } catch {}
+        }
+        throw new Error(`(${res.status}) ${serverMsg}`);
+      }
+
+      const data = (await res.json()) as {
+        pdfUrl: string;
+        coverUrl?: string | null;
+      };
+      const uploadedPdfUrl = data.pdfUrl;
+      const uploadedCoverUrl = data.coverUrl ?? undefined;
+
+      // 2) Cria o objeto Book
+      const now = new Date();
+      const newBook = {
+        id: crypto.randomUUID(),
+        title: values.title,
+        author: values.author,
+        genre: values.genre,
+        year: values.year,
+        pages: values.pages,
+        currentPage: values.currentPage ?? 0,
+        rating: values.rating,
+        synopsis: values.synopsis,
+        cover: uploadedCoverUrl, // 👈 só via upload (pode ser undefined)
+        status: values.status,
+        isbn: values.isbn,
+        notes: values.notes,
+        fileUrl: uploadedPdfUrl, // 👈 sempre do upload
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      addBook(newBook);
+      showToast({
+        title: 'Livro criado',
+        message: 'Cadastro realizado com sucesso.',
+        variant: 'success',
+      });
+      router.push(`/books/${newBook.id}`);
+    } catch (err: any) {
+      console.error(err);
+      showToast({
+        title: 'Erro ao salvar',
+        message: err?.message ?? 'Tente novamente.',
+        variant: 'error',
+      });
+    }
   };
 
   return (
@@ -138,7 +183,7 @@ export default function NewBookPage() {
 
       <h1 className="mb-2 text-2xl font-semibold">Adicionar novo livro</h1>
 
-      {/* Barra de progresso – agora começa em 0 quando tudo está vazio */}
+      {/* Barra de progresso – métrica visual do preenchimento */}
       <div className="mb-4">
         <div className="mb-1 text-sm font-medium">
           Progresso do preenchimento
@@ -155,11 +200,15 @@ export default function NewBookPage() {
           onSubmit={handleSubmit(onSubmit)}
           className="grid grid-cols-1 gap-6 sm:grid-cols-[auto,1fr]"
         >
+          {/* Coluna da esquerda: preview da capa */}
           <div>
-            <CoverPreview url={coverUrl} alt="Capa do livro" />
-            <p className="mt-2 text-xs text-slate-500">Preview da capa</p>
+            <CoverPreview url={coverPreviewUrl} alt="Capa do livro" />
+            <p className="mt-2 text-xs text-slate-500">
+              Preview da capa (se enviar imagem)
+            </p>
           </div>
 
+          {/* Coluna da direita: campos */}
           <div className="grid grid-cols-1 gap-4">
             {/* Título */}
             <div>
@@ -170,6 +219,7 @@ export default function NewBookPage() {
                   errors.title ? 'border-red-600' : ''
                 }`}
                 placeholder="Ex.: Dom Casmurro"
+                autoFocus
               />
               {errors.title && (
                 <p className="mt-1 text-sm text-red-600">
@@ -313,46 +363,46 @@ export default function NewBookPage() {
               </div>
             </div>
 
-            {/* URL da capa */}
+            {/* IMPORTANTE: PDF obrigatório via upload */}
             <div>
               <label className="mb-1 block text-sm font-medium">
-                URL da capa
+                Importar PDF (obrigatório)
               </label>
               <input
-                {...register('cover')}
-                placeholder="https://..."
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
                 className={`w-full rounded-md border px-3 py-2 ${
-                  errors.cover ? 'border-red-600' : ''
+                  !pdfFile ? 'border-red-600' : ''
                 }`}
               />
-              {errors.cover && (
+              <p className="mt-1 text-xs text-slate-600">
+                Selecione o arquivo do <strong>livro em PDF</strong>. O arquivo
+                será salvo localmente em <code>public/ebooks</code> e ficará
+                disponível para leitura no app.
+              </p>
+              {!pdfFile && (
                 <p className="mt-1 text-sm text-red-600">
-                  {errors.cover.message as string}
+                  O PDF do livro é obrigatório.
                 </p>
               )}
             </div>
 
-            {/* PDF dentro do projeto */}
+            {/* Upload de capa (opcional) */}
             <div>
               <label className="mb-1 block text-sm font-medium">
-                Arquivo PDF (caminho no projeto)
+                Importar Capa (opcional)
               </label>
               <input
-                {...register('fileUrl')}
-                className={`w-full rounded-md border px-3 py-2 ${
-                  errors.fileUrl ? 'border-red-600' : ''
-                }`}
-                placeholder="/ebooks/dezesseis-luas-kami-garcia.pdf"
+                type="file"
+                accept="image/*"
+                onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+                className="w-full rounded-md border px-3 py-2"
               />
-              <p className="mt-1 text-xs text-slate-500">
-                Coloque o arquivo em <code>public/ebooks/</code> e informe o
-                caminho começando por <code>/ebooks/</code>.
+              <p className="mt-1 text-xs text-slate-600">
+                Se enviar uma imagem, ela será salva em{' '}
+                <code>public/covers</code> e usada como capa do livro.
               </p>
-              {errors.fileUrl && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.fileUrl.message as string}
-                </p>
-              )}
             </div>
 
             {/* ISBN */}
@@ -389,7 +439,7 @@ export default function NewBookPage() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !pdfFile} // 👈 UX: desabilita sem PDF
                 className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
               >
                 {isSubmitting ? 'Salvando…' : 'Salvar'}

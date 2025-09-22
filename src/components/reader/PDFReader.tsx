@@ -1,4 +1,5 @@
 // src/components/reader/PDFReader.tsx
+// src/components/reader/PDFReader.tsx
 'use client';
 
 import * as React from 'react';
@@ -41,16 +42,20 @@ type ReaderThemeKey = keyof typeof READER_THEMES;
 
 const THEME_STORAGE_KEY = 'reader_theme';
 
+/** Tipagem do módulo carregado dinamicamente de react-pdf (evita any) */
+type ReactPDFModule = {
+  Document: React.ComponentType<import('react-pdf').DocumentProps>;
+  Page: React.ComponentType<import('react-pdf').PageProps>;
+  pdfjs: typeof import('react-pdf').pdfjs;
+};
+
 type Props = {
   /** Livro atual (usado para salvar progresso) */
   book: Book;
-
   /** Caminho do PDF (relativo ou absoluto) */
   fileUrl: string;
-
   /** Zoom inicial (1.0 = 100%) */
   initialScale?: number;
-
   /** Página inicial 1-based (opcional). Se fornecida, tem prioridade. */
   initialPage?: number;
 };
@@ -59,7 +64,7 @@ export default function PDFReader({
   book,
   fileUrl,
   initialScale = 1.0,
-  initialPage, // 👈 agora aceitamos a prop
+  initialPage,
 }: Props) {
   /* ──────────────────────────────────────────────────────────────────────────
    * Estado/Contexto
@@ -73,11 +78,7 @@ export default function PDFReader({
   const { updateBook } = useBooks();
 
   // Carrega react-pdf só no cliente (evita SSR/DOMMatrix)
-  const [ReactPDF, setReactPDF] = React.useState<null | {
-    Document: any;
-    Page: any;
-    pdfjs: any;
-  }>(null);
+  const [ReactPDF, setReactPDF] = React.useState<ReactPDFModule | null>(null);
 
   const [numPages, setNumPages] = React.useState<number | null>(null);
   const [pageNumber, setPageNumber] = React.useState<number>(1); // 1-based
@@ -188,7 +189,6 @@ export default function PDFReader({
     setNumPages(pdf.numPages);
     setErrorMsg(null);
     setDocLoading(false);
-
     // clamp da página atual ao total
     setPageNumber((prev) => Math.max(1, Math.min(prev, pdf.numPages)));
   }, []);
@@ -200,21 +200,39 @@ export default function PDFReader({
   }, []);
 
   /* ──────────────────────────────────────────────────────────────────────────
-   * Navegação/Zoom/Atalhos
+   * Navegação/Zoom (memoizados) + Atalhos
    * ────────────────────────────────────────────────────────────────────────── */
+
+  // booleans derivados (não entram como dependência dos handlers)
   const canPrev = pageNumber > 1;
-  const canNext = numPages ? pageNumber < numPages : false;
+  const canNext = !!numPages && pageNumber < numPages;
 
-  const goPrev = () => canPrev && setPageNumber((p) => p - 1);
-  const goNext = () => canNext && setPageNumber((p) => p + 1);
-  const goFirst = () => setPageNumber(1);
-  const goLast = () => numPages && setPageNumber(numPages);
+  // ✅ todos handlers estáveis (useCallback) — evita “Hook changes on every render”
+  const goPrev = React.useCallback(() => {
+    setPageNumber((p) => Math.max(1, p - 1));
+  }, []);
 
-  const zoomOut = () =>
+  const goNext = React.useCallback(() => {
+    setPageNumber((p) => (numPages ? Math.min(numPages, p + 1) : p + 1));
+  }, [numPages]);
+
+  const goFirst = React.useCallback(() => {
+    setPageNumber(1);
+  }, []);
+
+  const goLast = React.useCallback(() => {
+    if (numPages) setPageNumber(numPages);
+  }, [numPages]);
+
+  const zoomOut = React.useCallback(() => {
     setScale((s) => Math.max(0.5, Math.round((s - 0.1) * 10) / 10));
-  const zoomIn = () =>
-    setScale((s) => Math.min(2.0, Math.round((s + 0.1) * 10) / 10));
+  }, []);
 
+  const zoomIn = React.useCallback(() => {
+    setScale((s) => Math.min(2.0, Math.round((s + 0.1) * 10) / 10));
+  }, []);
+
+  // Atalhos de teclado usando callbacks estáveis
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {
@@ -259,12 +277,12 @@ export default function PDFReader({
     borderColor: themeObj.border,
   };
 
-  function handleThemeChange(k: ReaderThemeKey) {
+  const handleThemeChange = React.useCallback((k: ReaderThemeKey) => {
     setTheme(k);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, k);
     } catch {}
-  }
+  }, []);
 
   /* ──────────────────────────────────────────────────────────────────────────
    * Placeholders / erros
@@ -290,7 +308,8 @@ export default function PDFReader({
    * UI
    * ────────────────────────────────────────────────────────────────────────── */
   return (
-    <div className="flex h-full flex-col gap-2">
+    // 🧩 min-h-0 evita que filhos com overflow “empurrem” rodapé/áreas adjacentes
+    <div className="flex h-full min-h-0 flex-col gap-2">
       {/* Toolbar: navegação | zoom | tema */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* Navegação */}
@@ -375,7 +394,7 @@ export default function PDFReader({
 
       {/* Área do documento (centralizada e tematizada) */}
       <div
-        className="relative flex-1 overflow-auto rounded border"
+        className="relative flex-1 min-h-0 overflow-auto rounded border"
         style={readerStyle}
       >
         {isDocLoading && (

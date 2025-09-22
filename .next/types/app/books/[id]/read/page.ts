@@ -1,4 +1,4 @@
-// File: C:\Users\NB-Saltos\Documents\Koru\bookshelf\src\app\books\[id]\read\page.tsx
+// File: C:\Users\NB-Saltos\Documents\Koru 4\bookshelf\src\app\books\[id]\read\page.tsx
 import * as entry from '../../../../../../src/app/books/[id]/read/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

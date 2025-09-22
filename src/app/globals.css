@@ -27,3 +27,44 @@ body {
   flex-direction: column;
   min-height: 100vh;
 }
+
+/* -------------------------------------- */
+/* 🌠 Animação de meteoros                 */
+/* -------------------------------------- */
+@keyframes meteorFall {
+  0% {
+    transform: translateY(-100%) translateX(0) rotate(-45deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(120vh) translateX(-120vw) rotate(-45deg);
+    opacity: 0;
+  }
+}
+
+.meteor {
+  position: absolute;
+  top: -10px;
+  width: 2px;
+  height: 80px;
+  background: linear-gradient(45deg, white, transparent);
+  opacity: 0.8;
+  border-radius: 9999px;
+  animation: meteorFall linear forwards;
+}
+
+/* ── Modo leitor: tela cheia e sem “chrome” do app ───────────────────────── */
+
+body[data-reader='1'] #site-header,
+body[data-reader='1'] #site-footer {
+  display: none !important; /* esconde Header e Footer do layout */
+}
+
+/* remove paddings horizontais do <main> raiz nesse modo (opcional) */
+body[data-reader='1'] main {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
