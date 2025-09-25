@@ -1,32 +1,69 @@
+// src/app/books/new/page.tsx
 'use client';
 
-// Página de criação de livro (modo simples):
-// - PDF OBRIGATÓRIO via upload (sem caminho local)
-// - Capa OPCIONAL via upload (removido o campo de URL)
-// - Mensagens claras e UX: botão salvar desabilita sem PDF
+/**
+ * Página: Adicionar novo livro
+ * - PDF OBRIGATÓRIO por upload
+ * - Capa OPCIONAL por upload (com preview local)
+ * - Campos com CAIXA BRANCA sempre (mesmo no Dark) => destaque sobre fundo/gradiente
+ * - Painel (card) envolvendo os campos para melhorar leitura
+ * - Acessibilidade: aria-invalid, focus-visible, ring-offset
+ * - UX: botão Salvar com loading e desabilitado sem PDF
+ */
 
-import { useForm, type SubmitHandler, useWatch } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+
+// Form
+import {
+  useForm,
+  type SubmitHandler,
+  useWatch,
+  Controller,
+} from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+// Store / App
 import { useBooks } from '@/store/books';
 import { useToast } from '@/components/ui/ToastProvider';
+
+// UI e features auxiliares
+import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import CoverPreview from '@/components/book/CoverPreview';
 import RatingStars from '@/components/book/RatingStars';
-import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { Progress } from '@/components/ui/progress';
+
+// Nossos componentes UI com tokens
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+
+// Schema e tipos do formulário
 import { bookFormSchema, type BookFormValues } from '@/features/books/schema';
-import { useMemo, useState } from 'react';
 
 export default function NewBookPage() {
   const router = useRouter();
   const { addBook } = useBooks();
   const { showToast } = useToast();
 
-  // Estados locais para upload
+  // Campos “sempre brancos” (mesmo no dark), para destacar sobre o fundo da página
+  // - Mantém texto escuro e placeholder sutil
+  const WHITE_FIELD =
+    'bg-white dark:bg-white text-slate-900 placeholder:text-slate-500';
+
+  // Estados locais para upload de arquivos
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
+  // React Hook Form com Zod
   const {
     register,
     handleSubmit,
@@ -47,16 +84,16 @@ export default function NewBookPage() {
       currentPage: 0,
       rating: undefined,
       synopsis: undefined,
-      // ❌ removido: cover URL e fileUrl local
       status: 'QUERO_LER',
       isbn: undefined,
       notes: undefined,
     },
   });
 
+  // Rating atual (para o componente de estrelas)
   const rating = watch('rating');
 
-  // Progresso visual (só campos úteis do formulário)
+  // Progresso visual (campos principais + PDF)
   const values = useWatch({ control });
   const completion = useMemo(() => {
     const checks = [
@@ -69,14 +106,14 @@ export default function NewBookPage() {
       !!values?.synopsis?.trim(),
       !!values?.isbn?.trim(),
       !!values?.notes?.trim(),
-      !!pdfFile, // 👈 agora conta o upload do PDF
+      !!pdfFile, // 👈 conta o upload do PDF
     ];
     const total = checks.length;
     const filled = checks.filter(Boolean).length;
     return total ? Math.round((filled / total) * 100) : 0;
   }, [values, pdfFile]);
 
-  // Preview da capa: se houver upload, faz URL local temporária
+  // Preview da capa a partir do File (URL temporária)
   const coverPreviewUrl = useMemo(() => {
     if (!coverFile) return undefined;
     return URL.createObjectURL(coverFile);
@@ -85,9 +122,10 @@ export default function NewBookPage() {
   // SUBMIT
   const onSubmit: SubmitHandler<BookFormValues> = async (values) => {
     try {
-      // ✅ PDF é obrigatório
+      // ✅ Exigir PDF
       if (!pdfFile) {
-        setError('title', { type: 'manual', message: '' }); // força re-render dos erros
+        // Força re-render dos erros; mensagem exibida via toast e abaixo do campo
+        setError('title', { type: 'manual', message: '' });
         showToast({
           title: 'PDF obrigatório',
           message: 'Selecione um arquivo em “Importar PDF”.',
@@ -98,7 +136,7 @@ export default function NewBookPage() {
         clearErrors();
       }
 
-      // 1) Sobe o(s) arquivo(s) para a API local (/api/upload)
+      // 1) Upload dos arquivos para a API local
       const fd = new FormData();
       fd.append('pdf', pdfFile);
       if (coverFile) fd.append('cover', coverFile);
@@ -124,7 +162,7 @@ export default function NewBookPage() {
       const uploadedPdfUrl = data.pdfUrl;
       const uploadedCoverUrl = data.coverUrl ?? undefined;
 
-      // 2) Cria o objeto Book
+      // 2) Monta objeto Book para o store
       const now = new Date();
       const newBook = {
         id: crypto.randomUUID(),
@@ -136,11 +174,11 @@ export default function NewBookPage() {
         currentPage: values.currentPage ?? 0,
         rating: values.rating,
         synopsis: values.synopsis,
-        cover: uploadedCoverUrl, // 👈 só via upload (pode ser undefined)
+        cover: uploadedCoverUrl, // 👈 capa só via upload
         status: values.status,
         isbn: values.isbn,
         notes: values.notes,
-        fileUrl: uploadedPdfUrl, // 👈 sempre do upload
+        fileUrl: uploadedPdfUrl, // 👈 PDF sempre do upload
         createdAt: now,
         updatedAt: now,
       };
@@ -164,6 +202,7 @@ export default function NewBookPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
+      {/* Trilha de navegação */}
       <Breadcrumbs
         items={[
           { label: 'Início', href: '/' },
@@ -172,18 +211,16 @@ export default function NewBookPage() {
         ]}
       />
 
-      <div className="mb-4 flex gap-2">
-        <Link
-          href="/library"
-          className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-        >
-          Voltar
-        </Link>
+      {/* Ação voltar */}
+      <div className="mb-4">
+        <Button asChild variant="outline">
+          <Link href="/library">Voltar</Link>
+        </Button>
       </div>
 
       <h1 className="mb-2 text-2xl font-semibold">Adicionar novo livro</h1>
 
-      {/* Barra de progresso – métrica visual do preenchimento */}
+      {/* Barra de progresso */}
       <div className="mb-4">
         <div className="mb-1 text-sm font-medium">
           Progresso do preenchimento
@@ -191,9 +228,10 @@ export default function NewBookPage() {
         <Progress value={completion} />
       </div>
 
+      {/* Loader de envio */}
       {isSubmitting ? (
         <div className="flex items-center justify-center py-12">
-          <div className="h-16 w-16 animate-spin rounded-full border-t-4 border-blue-500"></div>
+          <div className="h-16 w-16 animate-spin rounded-full border-t-4 border-foreground/60" />
         </div>
       ) : (
         <form
@@ -203,253 +241,305 @@ export default function NewBookPage() {
           {/* Coluna da esquerda: preview da capa */}
           <div>
             <CoverPreview url={coverPreviewUrl} alt="Capa do livro" />
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-muted-foreground">
               Preview da capa (se enviar imagem)
             </p>
           </div>
 
-          {/* Coluna da direita: campos */}
-          <div className="grid grid-cols-1 gap-4">
-            {/* Título */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Título *</label>
-              <input
-                {...register('title')}
-                className={`w-full rounded-md border px-3 py-2 ${
-                  errors.title ? 'border-red-600' : ''
-                }`}
-                placeholder="Ex.: Dom Casmurro"
-                autoFocus
-              />
-              {errors.title && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.title.message}
+          {/* Coluna da direita: PAINEL que envolve os campos */}
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="grid grid-cols-1 gap-4">
+              {/* Título */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Título *
+                </label>
+                <Input
+                  className={WHITE_FIELD}
+                  placeholder="Ex.: Dom Casmurro"
+                  aria-invalid={!!errors.title}
+                  autoFocus
+                  {...register('title', { required: 'Informe o título' })}
+                />
+                {errors.title && (
+                  <p className="mt-1 text-sm text-destructive">
+                    {errors.title.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Autor */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Autor *
+                </label>
+                <Input
+                  className={WHITE_FIELD}
+                  placeholder="Ex.: Machado de Assis"
+                  aria-invalid={!!errors.author}
+                  {...register('author', { required: 'Informe o autor' })}
+                />
+                {errors.author && (
+                  <p className="mt-1 text-sm text-destructive">
+                    {errors.author.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Gênero + Ano */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Gênero
+                  </label>
+                  <Input
+                    className={WHITE_FIELD}
+                    aria-invalid={!!errors.genre}
+                    {...register('genre')}
+                  />
+                  {errors.genre && (
+                    <p className="mt-1 text-sm text-destructive">
+                      {errors.genre.message as string}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Ano</label>
+                  <Input
+                    className={WHITE_FIELD}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Ex.: 1899"
+                    aria-invalid={!!errors.year}
+                    {...register('year', { valueAsNumber: true })}
+                  />
+                  {errors.year && (
+                    <p className="mt-1 text-sm text-destructive">
+                      {errors.year.message as string}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Páginas + Página atual */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Páginas
+                  </label>
+                  <Input
+                    className={WHITE_FIELD}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Ex.: 256"
+                    aria-invalid={!!errors.pages}
+                    {...register('pages', { valueAsNumber: true })}
+                  />
+                  {errors.pages && (
+                    <p className="mt-1 text-sm text-destructive">
+                      {errors.pages.message as string}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Página atual
+                  </label>
+                  <Input
+                    className={WHITE_FIELD}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Ex.: 20"
+                    aria-invalid={!!errors.currentPage}
+                    {...register('currentPage', { valueAsNumber: true })}
+                  />
+                  {errors.currentPage && (
+                    <p className="mt-1 text-sm text-destructive">
+                      {errors.currentPage.message as string}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Avaliação (estrelas) + Status (Select controlado) */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* Avaliação com componente visual + campo hidden para RHF */}
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Avaliação
+                  </label>
+                  <input
+                    type="hidden"
+                    {...register('rating', { valueAsNumber: true })}
+                  />
+                  <RatingStars
+                    value={rating ?? 0}
+                    onChange={(n) =>
+                      setValue('rating', n || undefined, { shouldDirty: true })
+                    }
+                  />
+                  {errors.rating && (
+                    <p className="mt-1 text-sm text-destructive">
+                      {errors.rating.message as string}
+                    </p>
+                  )}
+                </div>
+
+                {/* Status com Radix Select + gatilho branco */}
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Status
+                  </label>
+                  <Controller
+                    control={control}
+                    name="status"
+                    defaultValue="QUERO_LER"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger
+                          className={WHITE_FIELD}
+                          aria-invalid={!!errors.status}
+                        >
+                          <SelectValue placeholder="Selecione…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="QUERO_LER">Quero ler</SelectItem>
+                          <SelectItem value="LENDO">Lendo</SelectItem>
+                          <SelectItem value="LIDO">Lido</SelectItem>
+                          <SelectItem value="PAUSADO">Pausado</SelectItem>
+                          <SelectItem value="ABANDONADO">Abandonado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {errors.status && (
+                    <p className="mt-1 text-sm text-destructive">
+                      {errors.status.message as string}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* PDF obrigatório (input nativo estilizado com fundo branco) */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Importar PDF (obrigatório)
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+                  aria-invalid={!pdfFile}
+                  className={[
+                    'w-full rounded-md border border-input px-3 py-2 text-sm',
+                    // fundo SEMPRE branco (mesmo no dark)
+                    'bg-white dark:bg-white text-slate-900 placeholder:text-slate-500',
+                    // foco acessível
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                  ].join(' ')}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Selecione o arquivo do <strong>livro em PDF</strong>. O
+                  arquivo será salvo localmente em <code>public/ebooks</code> e
+                  ficará disponível para leitura no app.
                 </p>
-              )}
-            </div>
+                {!pdfFile && (
+                  <p className="mt-1 text-sm text-destructive">
+                    O PDF do livro é obrigatório.
+                  </p>
+                )}
+              </div>
 
-            {/* Autor */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Autor *</label>
-              <input
-                {...register('author')}
-                className={`w-full rounded-md border px-3 py-2 ${
-                  errors.author ? 'border-red-600' : ''
-                }`}
-                placeholder="Ex.: Machado de Assis"
-              />
-              {errors.author && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.author.message}
+              {/* Upload de capa (opcional) */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Importar Capa (opcional)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+                  className={[
+                    'w-full rounded-md border border-input px-3 py-2 text-sm',
+                    'bg-white dark:bg-white text-slate-900 placeholder:text-slate-500',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                  ].join(' ')}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Se enviar uma imagem, ela será salva em{' '}
+                  <code>public/covers</code> e usada como capa do livro.
                 </p>
-              )}
-            </div>
+              </div>
 
-            {/* Gênero + Ano */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* ISBN */}
               <div>
-                <label className="mb-1 block text-sm font-medium">Gênero</label>
-                <input
-                  {...register('genre')}
-                  className={`w-full rounded-md border px-3 py-2 ${
-                    errors.genre ? 'border-red-600' : ''
-                  }`}
+                <label className="mb-1 block text-sm font-medium">ISBN</label>
+                <Input
+                  className={WHITE_FIELD}
+                  placeholder="Opcional"
+                  aria-invalid={!!errors.isbn}
+                  {...register('isbn')}
                 />
-                {errors.genre && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.genre.message}
+                {errors.isbn && (
+                  <p className="mt-1 text-sm text-destructive">
+                    {errors.isbn.message as string}
                   </p>
                 )}
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Ano</label>
-                <input
-                  {...register('year', { valueAsNumber: true })}
-                  inputMode="numeric"
-                  placeholder="Ex.: 1899"
-                  className={`w-full rounded-md border px-3 py-2 ${
-                    errors.year ? 'border-red-600' : ''
-                  }`}
-                />
-                {errors.year && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.year.message as string}
-                  </p>
-                )}
-              </div>
-            </div>
 
-            {/* Páginas + Página atual */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Sinopse */}
               <div>
                 <label className="mb-1 block text-sm font-medium">
-                  Páginas
+                  Sinopse
                 </label>
-                <input
-                  {...register('pages', { valueAsNumber: true })}
-                  inputMode="numeric"
-                  placeholder="Ex.: 256"
-                  className={`w-full rounded-md border px-3 py-2 ${
-                    errors.pages ? 'border-red-600' : ''
-                  }`}
+                <Textarea
+                  className={`min-h-28 ${WHITE_FIELD}`}
+                  placeholder="Opcional"
+                  aria-invalid={!!errors.synopsis}
+                  {...register('synopsis')}
                 />
-                {errors.pages && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.pages.message as string}
+                {errors.synopsis && (
+                  <p className="mt-1 text-sm text-destructive">
+                    {errors.synopsis.message as string}
                   </p>
                 )}
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Página atual
-                </label>
-                <input
-                  {...register('currentPage', { valueAsNumber: true })}
-                  inputMode="numeric"
-                  placeholder="Ex.: 20"
-                  className={`w-full rounded-md border px-3 py-2 ${
-                    errors.currentPage ? 'border-red-600' : ''
-                  }`}
-                />
-                {errors.currentPage && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.currentPage.message as string}
-                  </p>
-                )}
-              </div>
-            </div>
 
-            {/* Avaliação + Status */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Notas */}
               <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Avaliação
-                </label>
-                <input
-                  type="hidden"
-                  {...register('rating', { valueAsNumber: true })}
+                <label className="mb-1 block text-sm font-medium">Notas</label>
+                <Textarea
+                  className={`min-h-24 ${WHITE_FIELD}`}
+                  placeholder="Opcional"
+                  aria-invalid={!!errors.notes}
+                  {...register('notes')}
                 />
-                <RatingStars
-                  value={rating ?? 0}
-                  onChange={(n) =>
-                    setValue('rating', n || undefined, { shouldDirty: true })
-                  }
-                />
-                {errors.rating && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.rating.message as string}
+                {errors.notes && (
+                  <p className="mt-1 text-sm text-destructive">
+                    {errors.notes.message as string}
                   </p>
                 )}
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Status</label>
-                <select
-                  {...register('status')}
-                  className={`w-full rounded-md border px-3 py-2 ${
-                    errors.status ? 'border-red-600' : ''
-                  }`}
+
+              {/* Ações */}
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  isLoading={isSubmitting}
+                  disabled={!pdfFile}
                 >
-                  <option value="QUERO_LER">Quero ler</option>
-                  <option value="LENDO">Lendo</option>
-                  <option value="LIDO">Lido</option>
-                  <option value="PAUSADO">Pausado</option>
-                  <option value="ABANDONADO">Abandonado</option>
-                </select>
-                {errors.status && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.status.message as string}
-                  </p>
-                )}
+                  {isSubmitting ? 'Salvando…' : 'Salvar'}
+                </Button>
+
+                <Button asChild variant="outline" type="button">
+                  <Link href="/library">Cancelar</Link>
+                </Button>
               </div>
-            </div>
-
-            {/* IMPORTANTE: PDF obrigatório via upload */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Importar PDF (obrigatório)
-              </label>
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
-                className={`w-full rounded-md border px-3 py-2 ${
-                  !pdfFile ? 'border-red-600' : ''
-                }`}
-              />
-              <p className="mt-1 text-xs text-slate-600">
-                Selecione o arquivo do <strong>livro em PDF</strong>. O arquivo
-                será salvo localmente em <code>public/ebooks</code> e ficará
-                disponível para leitura no app.
-              </p>
-              {!pdfFile && (
-                <p className="mt-1 text-sm text-red-600">
-                  O PDF do livro é obrigatório.
-                </p>
-              )}
-            </div>
-
-            {/* Upload de capa (opcional) */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Importar Capa (opcional)
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
-                className="w-full rounded-md border px-3 py-2"
-              />
-              <p className="mt-1 text-xs text-slate-600">
-                Se enviar uma imagem, ela será salva em{' '}
-                <code>public/covers</code> e usada como capa do livro.
-              </p>
-            </div>
-
-            {/* ISBN */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">ISBN</label>
-              <input
-                {...register('isbn')}
-                className="w-full rounded-md border px-3 py-2"
-                placeholder="Opcional"
-              />
-            </div>
-
-            {/* Sinopse */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Sinopse</label>
-              <textarea
-                {...register('synopsis')}
-                className="min-h-28 w-full rounded-md border px-3 py-2"
-                placeholder="Opcional"
-              />
-            </div>
-
-            {/* Notas */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Notas</label>
-              <textarea
-                {...register('notes')}
-                className="min-h-24 w-full rounded-md border px-3 py-2"
-                placeholder="Opcional"
-              />
-            </div>
-
-            {/* Ações */}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={isSubmitting || !pdfFile} // 👈 UX: desabilita sem PDF
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
-              >
-                {isSubmitting ? 'Salvando…' : 'Salvar'}
-              </button>
-              <Link
-                href="/library"
-                className="rounded-md border px-4 py-2 text-sm hover:bg-slate-50"
-              >
-                Cancelar
-              </Link>
             </div>
           </div>
         </form>

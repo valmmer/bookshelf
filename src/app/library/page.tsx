@@ -1,16 +1,17 @@
+// src/app/library/page.tsx
 'use client';
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion'; // 👈 animações
+import { motion, AnimatePresence } from 'framer-motion';
 import { useBooks } from '@/store/books';
 import BookCard from '@/components/book/BookCard';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import AddBookFab from '@/components/actions/AddBookFab';
 import LibrarySkeleton from '@/components/skeleton/Skeleton';
 
-/* ----------------------------- Filtros fixos ----------------------------- */
+/* ======================== Filtros fixos (sem mudanças) ===================== */
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos' },
   { value: 'QUERO_LER', label: 'Quero ler' },
@@ -42,7 +43,7 @@ export default function LibraryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  /* Evita SSR mismatch e dá tempo pro skeleton aparecer */
+  // Evita mismatch e permite Skeleton
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -63,7 +64,7 @@ export default function LibraryPage() {
 
   const qDebounced = useDebounced(query, 250);
 
-  /* ----------- Sincroniza filtros -> URL (sem recarregar a página) ---------- */
+  // URL “viva”
   useEffect(() => {
     if (!mounted) return;
     const params = new URLSearchParams();
@@ -141,7 +142,7 @@ export default function LibraryPage() {
   }, [state.books, qDebounced, status, genre, sort, onlyWithPdf]);
 
   /* -------------------------- Estados derivados UX ------------------------- */
-  const isLoading = !mounted; // <- durante hidratação mostramos Skeleton
+  const isLoading = !mounted;
   const noBooks = mounted && state.books.length === 0;
   const noResults = mounted && state.books.length > 0 && filtered.length === 0;
 
@@ -151,113 +152,175 @@ export default function LibraryPage() {
       {mounted && (
         <motion.main
           key="library-page"
-          className="mx-auto max-w-6xl px-6 py-8"
+          // ⚠️ força cor sólida para TODO o conteúdo (mata herança de text-transparent)
+          className="mx-auto max-w-6xl px-6 py-8 text-slate-900 dark:text-slate-100"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.35, ease: 'easeOut' }}
         >
-          {/* Breadcrumbs */}
           <Breadcrumbs
             items={[{ label: 'Início', href: '/' }, { label: 'Biblioteca' }]}
           />
 
-          {/* Cabeçalho */}
-          <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">
-                Biblioteca
-              </h1>
-              <p className="mt-1 text-sm text-slate-600">
-                {state.books.length} livro(s){' '}
-                {filtered.length !== state.books.length && (
-                  <span> • mostrando {filtered.length}</span>
-                )}
-              </p>
-            </div>
-            <Link
-              href="/books/new"
-              className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
-            >
-              Adicionar livro
-            </Link>
-          </header>
+          {/* Cabeçalho + filtros dentro de um “scrim” neutro.
+              Garante contraste (light/dark) mesmo com gradientes atrás. */}
+          <section
+            className={[
+              'mb-6 rounded-xl p-4 sm:p-5 shadow-sm ring-1',
+              'bg-white/80 ring-black/10',
+              'dark:bg-zinc-900/50 dark:ring-white/10',
+            ].join(' ')}
+          >
+            {/* Cabeçalho */}
+            <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight">
+                  Biblioteca
+                </h1>
+                <p
+                  className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+                  aria-live="polite"
+                >
+                  {state.books.length} livro(s){' '}
+                  {filtered.length !== state.books.length && (
+                    <span> • mostrando {filtered.length}</span>
+                  )}
+                </p>
+              </div>
 
-          {/* Filtros */}
-          <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-5">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
-              placeholder="Buscar por título ou autor…"
-              aria-label="Buscar por título ou autor"
-            />
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
-              aria-label="Filtrar por status"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={genre}
-              onChange={(e) => setGenre(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
-              aria-label="Filtrar por gênero"
-            >
-              <option value="">Gênero: Todos</option>
-              {genres.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
-              aria-label="Ordenar por"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+              <Link
+                href="/books/new"
+                className={[
+                  'rounded-lg px-4 py-2 text-sm transition',
+                  'bg-sky-600 text-white hover:bg-sky-500',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400',
+                ].join(' ')}
+              >
+                Adicionar livro
+              </Link>
+            </header>
+
+            {/* Filtros */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+              {/* Busca */}
+              <label className="sr-only" htmlFor="q">
+                Buscar por título ou autor
+              </label>
               <input
-                type="checkbox"
-                checked={onlyWithPdf}
-                onChange={(e) => setOnlyWithPdf(e.target.checked)}
-                className="h-4 w-4"
+                id="q"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className={[
+                  'w-full rounded-lg border px-3 py-2',
+                  'border-black/10 bg-white text-slate-900 placeholder:text-slate-500',
+                  'dark:border-white/10 dark:bg-zinc-800 dark:text-slate-100 dark:placeholder:text-slate-400',
+                  // corrige os menus nativos nos dois temas
+                  '[color-scheme:light] dark:[color-scheme:dark]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
+                ].join(' ')}
+                placeholder="Buscar por título ou autor…"
+                aria-label="Buscar por título ou autor"
               />
-              <span>Somente com PDF</span>
-            </label>
+
+              {/* Status */}
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className={[
+                  'w-full rounded-lg border px-3 py-2',
+                  'border-black/10 bg-white text-slate-900',
+                  'dark:border-white/10 dark:bg-zinc-800 dark:text-slate-100',
+                  '[color-scheme:light] dark:[color-scheme:dark]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
+                ].join(' ')}
+                aria-label="Filtrar por status"
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              {/* Gênero */}
+              <select
+                value={genre}
+                onChange={(e) => setGenre(e.target.value)}
+                className={[
+                  'w-full rounded-lg border px-3 py-2',
+                  'border-black/10 bg-white text-slate-900',
+                  'dark:border-white/10 dark:bg-zinc-800 dark:text-slate-100',
+                  '[color-scheme:light] dark:[color-scheme:dark]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
+                ].join(' ')}
+                aria-label="Filtrar por gênero"
+              >
+                <option value="">Gênero: Todos</option>
+                {genres.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+
+              {/* Ordenação */}
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className={[
+                  'w-full rounded-lg border px-3 py-2',
+                  'border-black/10 bg-white text-slate-900',
+                  'dark:border-white/10 dark:bg-zinc-800 dark:text-slate-100',
+                  '[color-scheme:light] dark:[color-scheme:dark]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
+                ].join(' ')}
+                aria-label="Ordenar por"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              {/* Somente com PDF */}
+              <label
+                className={[
+                  'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                  'border-black/10 bg-white text-slate-900',
+                  'dark:border-white/10 dark:bg-zinc-800 dark:text-slate-100',
+                ].join(' ')}
+              >
+                <input
+                  type="checkbox"
+                  checked={onlyWithPdf}
+                  onChange={(e) => setOnlyWithPdf(e.target.checked)}
+                  className="h-4 w-4 accent-sky-600"
+                />
+                <span>Somente com PDF</span>
+              </label>
+            </div>
           </section>
 
-          {/* Conteúdo com fallback de loading suave */}
+          {/* Conteúdo */}
           {isLoading ? (
             <LibrarySkeleton />
           ) : noBooks ? (
-            <div className="rounded-lg border p-8 text-center">
-              <p className="text-slate-600">
+            <div className="rounded-xl p-8 text-center ring-1 bg-white/80 ring-black/10 dark:bg-zinc-900/50 dark:ring-white/10">
+              <p className="text-slate-600 dark:text-slate-300">
                 Você ainda não adicionou nenhum livro.
               </p>
               <Link
                 href="/books/new"
-                className="mt-3 inline-block rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+                className="mt-3 inline-block rounded bg-sky-600 px-3 py-1.5 text-sm text-white hover:bg-sky-500"
               >
                 Adicionar o primeiro livro
               </Link>
             </div>
           ) : noResults ? (
-            <div className="rounded-lg border p-8 text-center">
-              <p className="text-slate-600">
+            <div className="rounded-xl p-8 text-center ring-1 bg-white/80 ring-black/10 dark:bg-zinc-900/50 dark:ring-white/10">
+              <p className="text-slate-600 dark:text-slate-300">
                 Nenhum resultado para os filtros aplicados.
               </p>
               <button
@@ -268,7 +331,7 @@ export default function LibraryPage() {
                   setSort('title');
                   setOnlyWithPdf(false);
                 }}
-                className="mt-3 inline-flex items-center rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+                className="mt-3 inline-flex items-center rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white"
               >
                 Limpar filtros
               </button>
@@ -285,6 +348,7 @@ export default function LibraryPage() {
                   className="group"
                 >
                   <BookCard book={bk} />
+
                   {bk.status === 'QUERO_LER' && (
                     <div className="mt-2">
                       <button
@@ -300,7 +364,6 @@ export default function LibraryPage() {
             </section>
           )}
 
-          {/* Botão flutuante (atalho N) */}
           <AddBookFab />
         </motion.main>
       )}

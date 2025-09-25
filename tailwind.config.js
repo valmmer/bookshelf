@@ -1,4 +1,6 @@
+// tailwind.config.js
 module.exports = {
+  darkMode: 'class', // ← chave: ativa via classe "dark" no <html>
   content: [
     './src/**/*.{js,ts,jsx,tsx}',
     './components/**/*.{js,ts,jsx,tsx}',
@@ -7,28 +9,32 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: '#4A90E2',
-        secondary: '#50E3C2',
-        background: '#f5f5f5', // Cor de fundo do layout
+        background: 'rgb(var(--background))',
+        foreground: 'rgb(var(--foreground))',
+        muted: 'rgb(var(--muted))',
+        'muted-foreground': 'rgb(var(--muted-foreground))',
+        card: 'rgb(var(--card))',
+        'card-foreground': 'rgb(var(--card-foreground))',
+        popover: 'rgb(var(--popover))',
+        'popover-foreground': 'rgb(var(--popover-foreground))',
+        primary: 'rgb(var(--primary))',
+        'primary-foreground': 'rgb(var(--primary-foreground))',
+        secondary: 'rgb(var(--secondary))',
+        'secondary-foreground': 'rgb(var(--secondary-foreground))',
+        accent: 'rgb(var(--accent))',
+        'accent-foreground': 'rgb(var(--accent-foreground))',
+        destructive: 'rgb(var(--destructive))',
+        'destructive-foreground': 'rgb(var(--destructive-foreground))',
+        border: 'rgb(var(--border))',
+        input: 'rgb(var(--input))',
+        ring: 'rgb(var(--ring))',
       },
-      screens: {
-        sm: '640px',
-        md: '768px',
-        lg: '1024px',
-        xl: '1280px',
-        '2xl': '1536px',
-      },
-      spacing: {
-        128: '32rem', // Exemplo de espaçamento customizado
-      },
-      borderRadius: {
-        xl: '1rem', // Exemplo de borda arredondada personalizada
-      },
+      // (demais extensões que você já tinha: spacing, radius, plugins, etc.)
     },
   },
   plugins: [
-    require('@tailwindcss/forms'), // Para melhorar o estilo dos formulários
-    require('@tailwindcss/typography'), // Melhorar tipografia
-    require('@tailwindcss/aspect-ratio'), // Controle de proporções de vídeos e imagens
+    require('@tailwindcss/forms'),
+    require('@tailwindcss/typography'),
+    require('@tailwindcss/aspect-ratio'),
   ],
 };

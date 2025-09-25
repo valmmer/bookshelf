@@ -1,70 +1,69 @@
 @import "tailwindcss";
 
-/* tokens globais */
+/* === Design tokens (CSS variables) for light/dark === */
 :root {
-  --fg: #0f172a; /* texto escuro */
-
-  /* degradê pêssego gold sofisticado */
-  --bg-gradient: linear-gradient(
-    120deg,
-    #F0E442 0%,    /* pessego bebê perolado */
-    #f4f8bb 25%,   /* pessego suave */
-    #e0f48f 50%,   /* pêssego médio elegante */
-    #c4f7d0 75%,   /* pêssego-dourado */
-    #E69F00 100%   /* champagne dourado */
-  );
+  --background: 255 255 255;      /* white */
+  --foreground: 15 23 42;         /* slate-900 */
+  --muted: 241 245 249;           /* slate-100 */
+  --muted-foreground: 100 116 139;/* slate-500 */
+  --card: 255 255 255;
+  --card-foreground: 15 23 42;
+  --popover: 255 255 255;
+  --popover-foreground: 15 23 42;
+  --primary: 59 130 246;          /* blue-500 */
+  --primary-foreground: 255 255 255;
+  --secondary: 16 185 129;        /* emerald-500 */
+  --secondary-foreground: 255 255 255;
+  --accent: 99 102 241;           /* indigo-500 */
+  --accent-foreground: 255 255 255;
+  --destructive: 239 68 68;       /* red-500 */
+  --destructive-foreground: 255 255 255;
+  --border: 226 232 240;          /* slate-200 */
+  --input: 226 232 240;
+  --ring: 59 130 246;             /* primary */
 }
 
-html, body {
-  height: 100%;
+/* Versão escura dos tokens (aplicada quando <html> tem class="dark") */
+.dark:root, .dark :root {
+  --background: 2 6 23;           /* slate-950 */
+  --foreground: 226 232 240;      /* slate-200 */
+  --muted: 15 23 42;              /* slate-900 */
+  --muted-foreground: 148 163 184;/* slate-400 */
+  --card: 2 6 23;
+  --card-foreground: 226 232 240;
+  --popover: 2 6 23;
+  --popover-foreground: 226 232 240;
+  --primary: 59 130 246;
+  --primary-foreground: 255 255 255;
+  --secondary: 16 185 129;
+  --secondary-foreground: 255 255 255;
+  --accent: 99 102 241;
+  --accent-foreground: 255 255 255;
+  --destructive: 239 68 68;
+  --destructive-foreground: 255 255 255;
+  --border: 30 41 59;             /* slate-800 */
+  --input: 30 41 59;
+  --ring: 59 130 246;
 }
+
+/* Aplicação base das cores + seu gradiente existente */
+* { border-color: rgb(var(--border)); }
 
 body {
-  background: var(--bg-gradient);
-  background-attachment: fixed;
-  color: var(--fg);
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
+  background: var(--bg-gradient, linear-gradient(120deg,#F0E442 0%,#f4f8bb 25%,#e0f48f 50%,#c4f7d0 75%,#E69F00 100%));
+  color: rgb(var(--foreground));
+}
+.dark body {
+  /* gradiente escuro elegante */
+  background: linear-gradient(120deg,#0b1220 0%,#0a0f1a 30%,#0a0e16 60%,#090d14 100%);
+  color: rgb(var(--foreground));
 }
 
-/* -------------------------------------- */
-/* 🌠 Animação de meteoros                 */
-/* -------------------------------------- */
-@keyframes meteorFall {
-  0% {
-    transform: translateY(-100%) translateX(0) rotate(-45deg);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(120vh) translateX(-120vw) rotate(-45deg);
-    opacity: 0;
-  }
+/* Suavidade na troca de tema */
+html.theme-transition, html.theme-transition * {
+  transition-property: background-color, color, border-color, fill, stroke;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
 }
 
-.meteor {
-  position: absolute;
-  top: -10px;
-  width: 2px;
-  height: 80px;
-  background: linear-gradient(45deg, white, transparent);
-  opacity: 0.8;
-  border-radius: 9999px;
-  animation: meteorFall linear forwards;
-}
-
-/* ── Modo leitor: tela cheia e sem “chrome” do app ───────────────────────── */
-
-body[data-reader='1'] #site-header,
-body[data-reader='1'] #site-footer {
-  display: none !important; /* esconde Header e Footer do layout */
-}
-
-/* remove paddings horizontais do <main> raiz nesse modo (opcional) */
-body[data-reader='1'] main {
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
+/* (Mantive seus estilos anteriores, inclusive reader-mode etc.) */

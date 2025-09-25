@@ -1,13 +1,15 @@
 // src/components/dashboard/KpiCard.tsx
 import { FC, JSX } from 'react';
+import { cn } from '@/lib/utils';
 
 interface KpiCardProps {
-  icon: JSX.Element; // Aceita ícones do tipo JSX.Element
+  icon: JSX.Element;
   label: string;
   value: number;
-  bgColor: string; // Cor de fundo do card
-  labelColor: string; // Cor do texto do label
-  valueColor: string; // Cor do texto do valor
+  bgColor?: string;
+  labelColor?: string;
+  valueColor?: string;
+  className?: string;
 }
 
 const KpiCard: FC<KpiCardProps> = ({
@@ -17,18 +19,32 @@ const KpiCard: FC<KpiCardProps> = ({
   bgColor,
   labelColor,
   valueColor,
+  className,
 }) => {
+  // Defaults amigáveis a Light/Dark (podem ser sobrescritos por props)
+  const bg = bgColor ?? 'bg-card';
+  const labelCls = labelColor ?? 'text-muted-foreground';
+  const valueCls = valueColor ?? 'text-foreground';
+
   return (
     <div
-      className={`rounded-lg p-4 ${bgColor} shadow-lg hover:shadow-xl transition-all duration-300`}
+      className={cn(
+        'rounded-xl border border-border p-4 shadow-sm transition',
+        'hover:shadow-md focus-within:shadow-md',
+        bg,
+        className
+      )}
     >
       <div className="flex items-center gap-4">
-        {/* Ícone */}
+        {/* Ícone em destaque */}
         <div className="text-3xl text-primary">{icon}</div>
-        {/* Informações do KPI */}
+
+        {/* Texto */}
         <div>
-          <p className={`text-sm ${labelColor}`}>{label}</p>
-          <p className={`text-xl font-semibold ${valueColor}`}>{value}</p>
+          <p className={cn('text-sm', labelCls)}>{label}</p>
+          <p className={cn('text-xl font-semibold leading-tight', valueCls)}>
+            {value}
+          </p>
         </div>
       </div>
     </div>
