@@ -1,35 +1,30 @@
+// src/features/books/schema.ts
 import { z } from 'zod';
 
-export const bookFormSchema = z
-  .object({
-    title: z.string().min(2, 'Título é obrigatório (mín. 2)'),
-    author: z.string().min(2, 'Autor é obrigatório (mín. 2)'),
-    genre: z.string().optional(),
-    year: z.number().int().min(0).max(2100).optional(),
-    pages: z.number().int().min(1).optional(),
-    currentPage: z.number().int().min(0).optional(),
-    rating: z.number().int().min(1).max(5).optional(),
-    synopsis: z.string().optional(),
-    // ❌ removido: cover URL (se quiser manter, deixe como optional string)
-    status: z
-      .enum(['QUERO_LER', 'LENDO', 'LIDO', 'PAUSADO', 'ABANDONADO'])
-      .optional(),
-    isbn: z.string().optional(),
-    notes: z.string().optional(),
-    // ❌ removido: fileUrl (caminho local)
-  })
-  .superRefine((data, ctx) => {
-    if (
-      data.pages !== undefined &&
-      data.currentPage !== undefined &&
-      data.currentPage > data.pages
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Página atual não pode ser maior que total de páginas',
-        path: ['currentPage'],
-      });
-    }
-  });
+// enum client-safe
+export const READING_STATUSES = [
+  'QUERO_LER',
+  'LENDO',
+  'LIDO',
+  'PAUSADO',
+  'ABANDONADO',
+] as const;
+export type ReadingStatus = (typeof READING_STATUSES)[number];
+
+export const bookFormSchema = z.object({
+  title: z.string().min(1, 'Título é obrigatório'),
+  author: z.string().min(1, 'Autor é obrigatório'),
+  genre: z.string().optional(),
+  year: z.number().int().optional().nullable(),
+  pages: z.number().int().optional().nullable(),
+  currentPage: z.number().int().optional().nullable(),
+  rating: z.number().int().optional().nullable(),
+  synopsis: z.string().optional().nullable(),
+  status: z.enum(READING_STATUSES).default('QUERO_LER'),
+  isbn: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  cover: z.string().optional().nullable(),
+  fileUrl: z.string().optional().nullable(),
+});
 
 export type BookFormValues = z.infer<typeof bookFormSchema>;

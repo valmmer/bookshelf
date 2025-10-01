@@ -73,7 +73,7 @@ export class AnnotationEditor {
      * @param {AnnotationEditorLayer} parent
      */
     static paste(item: DataTransferItem, parent: AnnotationEditorLayer): void;
-    static #rotatePoint(x: any, y: any, angle: any): any[];
+    static "__#41@#rotatePoint"(x: any, y: any, angle: any): any[];
     static _round(x: any): number;
     /**
      * Deserialize the editor.
@@ -91,8 +91,6 @@ export class AnnotationEditor {
      * @param {AnnotationEditorParameters} parameters
      */
     constructor(parameters: AnnotationEditorParameters);
-    isSelected: boolean;
-    _isCopy: boolean;
     _editToolbar: null;
     _initialOptions: any;
     _initialData: null;
@@ -118,7 +116,6 @@ export class AnnotationEditor {
     isAttachedToDOM: boolean;
     deleted: boolean;
     get editorType(): any;
-    get mode(): any;
     /**
      * Get the properties to update in the UI for this editor.
      * @returns {Array}
@@ -169,7 +166,6 @@ export class AnnotationEditor {
      * @param {number} ty - y-translation in screen coordinates.
      */
     setAt(x: number, y: number, tx: number, ty: number): void;
-    _moveAfterPaste(baseX: any, baseY: any): void;
     /**
      * Translate the editor position within its parent.
      * @param {number} x - x-translation in screen coordinates.
@@ -183,7 +179,6 @@ export class AnnotationEditor {
      * @param {number} y - y-translation in page coordinates.
      */
     translateInPage(x: number, y: number): void;
-    translationDone(): void;
     drag(tx: any, ty: any): void;
     /**
      * Called when the editor is being translated.
@@ -257,11 +252,6 @@ export class AnnotationEditor {
      */
     altTextFinish(): void;
     /**
-     * Get the toolbar buttons for this editor.
-     * @returns {Array<Array<string|object|null>>|null}
-     */
-    get toolbarButtons(): Array<Array<string | object | null>> | null;
-    /**
      * Add a toolbar for this editor.
      * @returns {Promise<EditorToolbar|null>}
      */
@@ -269,11 +259,7 @@ export class AnnotationEditor {
     removeEditToolbar(): void;
     addContainer(container: any): void;
     getClientDimensions(): DOMRect;
-    /**
-     * Create the alt text for this editor.
-     * @returns {object}
-     */
-    createAltText(): object;
+    addAltTextButton(): Promise<void>;
     /**
      * Set the alt text data.
      */
@@ -284,24 +270,6 @@ export class AnnotationEditor {
     serializeAltText(isForCopying: any): any;
     hasAltText(): boolean;
     hasAltTextData(): any;
-    addCommentButton(): Comment;
-    get commentColor(): null;
-    set comment(text: {
-        text: any;
-        date: any;
-        deleted: any;
-        color: null;
-    });
-    get comment(): {
-        text: any;
-        date: any;
-        deleted: any;
-        color: null;
-    };
-    setCommentData(text: any): void;
-    get hasEditedComment(): any;
-    editComment(): Promise<void>;
-    addComment(serialized: any): void;
     /**
      * Render this editor in a div.
      * @returns {HTMLDivElement | null}
@@ -312,6 +280,7 @@ export class AnnotationEditor {
      * @param {PointerEvent} event
      */
     pointerdown(event: PointerEvent): void;
+    get isSelected(): any;
     _onStartDragging(): void;
     _onStopDragging(): void;
     moveInDOM(): void;
@@ -325,12 +294,6 @@ export class AnnotationEditor {
     getRect(tx: number, ty: number, rotation?: number): any[];
     getRectInCurrentCoords(rect: any, pageHeight: any): any[];
     /**
-     * Get the rect in page coordinates without any translation.
-     * It's used when serializing the editor.
-     * @returns {Array<number>}
-     */
-    getPDFRect(): Array<number>;
-    /**
      * Executed once this editor has been rendered.
      * @param {boolean} focus - true if the editor should be focused.
      */
@@ -342,14 +305,12 @@ export class AnnotationEditor {
     isEmpty(): boolean;
     /**
      * Enable edit mode.
-     * @returns {boolean} - true if the edit mode has been enabled.
      */
-    enableEditMode(): boolean;
+    enableEditMode(): void;
     /**
      * Disable edit mode.
-     * @returns {boolean} - true if the edit mode has been disabled.
      */
-    disableEditMode(): boolean;
+    disableEditMode(): void;
     /**
      * Check if the editor is edited.
      * @returns {boolean}
@@ -450,25 +411,13 @@ export class AnnotationEditor {
      */
     enableEditing(): void;
     /**
-     * Check if the content of this editor can be changed.
-     * For example, a FreeText editor can be changed (the user can change the
-     * text), but a Stamp editor cannot.
-     * @returns {boolean}
-     */
-    get canChangeContent(): boolean;
-    /**
      * The editor is about to be edited.
      */
     enterInEditMode(): void;
     /**
-     * ondblclick callback.
-     * @param {MouseEvent} event
-     */
-    dblclick(event: MouseEvent): void;
-    /**
      * @returns {HTMLElement | null} the element requiring an alt text.
      */
-    getElementForAltText(): HTMLElement | null;
+    getImageForAltText(): HTMLElement | null;
     /**
      * Get the div which really contains the displayed content.
      * @returns {HTMLDivElement | undefined}
@@ -519,5 +468,4 @@ export class AnnotationEditor {
 }
 import { AnnotationEditorUIManager } from "./tools.js";
 import { EditorToolbar } from "./toolbar.js";
-import { Comment } from "./comment.js";
 import { ColorManager } from "./tools.js";

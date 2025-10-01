@@ -1,0 +1,55 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Enum de status de leitura
+enum ReadingStatus {
+  QUERO_LER
+  LENDO
+  LIDO
+  PAUSADO
+  ABANDONADO
+}
+
+// Gêneros (nome único)
+model Genre {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  books     Book[]
+}
+
+// Livro (modelo expandido)
+model Book {
+  id          Int            @id @default(autoincrement())
+  title       String
+  author      String
+  year        Int?
+  pages       Int            @default(0)
+  rating      Int?
+  synopsis    String?
+  cover       String?
+  fileUrl     String?
+  status      ReadingStatus  @default(QUERO_LER)
+  currentPage Int            @default(0)
+  isbn        String?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // relação com Genre
+  genreId     Int?
+  genre       Genre?         @relation(fields: [genreId], references: [id])
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([author])
+  @@index([title])
+}

@@ -1,281 +1,206 @@
-'use client';
-
-/**
- * Página de detalhes do livro.
- * - Mostra capa + metadados + sinopse/notas
- * - Ações: Ler, Voltar, Editar, Excluir
- * - Efeitos de carregamento (spinners) nos botões ao clicar
- * - Diálogo de confirmação para excluir
- * - Barra de progresso visual (Progress do shadcn)
- */
-
-import { useMemo, useState } from 'react';
+// src/app/books/[id]/page.tsx
+// ✅ Server Component — SSR, sem libs extras, usando seus tokens/comp.
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import ReadOnlyStars from '@/components/book/ReadOnlyStars';
+import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
+import { getBook } from '@/server/db/books';
 
-import { useBooks } from '@/store/books'; // Store global (com persistência no localStorage)
-import type { Book } from '@/types/book'; // Tipo Book vindo do store
-import Breadcrumbs from '@/components/navigation/Breadcrumbs';
-import { useToast } from '@/components/ui/ToastProvider'; // Toasts de sucesso/erro
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Progress } from '@/components/ui/progress'; // Barra de progresso (Radix + shadcn)
+import Badge from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import BookActions from '@/components/book/BookActions';
 
-/** Mini spinner visual reutilizável para os botões */
-function Spinner() {
-  return (
-    <span
-      aria-hidden
-      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-    />
-  );
+// -------- Helpers seguros --------
+function normalizeCover(u?: string | null) {
+  if (!u) return '/covers/placeholder-cover.jpg';
+  const s = String(u).trim();
+  if (!s) return '/covers/placeholder-cover.jpg';
+  if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/'))
+    return s;
+  if (s.startsWith('covers/')) return '/' + s;
+  return '/' + s.replace(/^\/+/, '');
+}
+function pct(curr?: number | null, total?: number | null) {
+  const t = Math.max(0, Number(total ?? 0));
+  const c = Math.max(0, Math.min(Number(curr ?? 0), t || Number(curr ?? 0)));
+  if (!t) return 0;
+  return Math.max(0, Math.min(100, Math.round((c / t) * 100)));
+}
+function statusBadge(status?: string | null) {
+  const s = String(status ?? '').toUpperCase();
+  const base = 'px-2 py-0.5 rounded text-xs font-medium';
+  const map: Record<string, string> = {
+    QUERO_LER: `${base} bg-gray-200 text-gray-800`,
+    LENDO: `${base} bg-blue-200 text-blue-800`,
+    LIDO: `${base} bg-green-200 text-green-800`,
+    PAUSADO: `${base} bg-yellow-200 text-yellow-800`,
+    ABANDONADO: `${base} bg-red-200 text-red-800`,
+  };
+  const cls = map[s] ?? `${base} bg-muted text-foreground`;
+  const label =
+    s === 'QUERO_LER'
+      ? 'Pendente'
+      : s === 'LENDO'
+      ? 'Lendo'
+      : s === 'LIDO'
+      ? 'Concluído'
+      : s === 'PAUSADO'
+      ? 'Pausado'
+      : s === 'ABANDONADO'
+      ? 'Abandonado'
+      : 'Indefinido';
+  return <Badge className={cls}>{label}</Badge>;
 }
 
-export default function BookDetailsPage() {
-  /** Obtém o id da rota /books/[id] */
-  const params = useParams<{ id: string | string[] }>();
-  const id = useMemo(
-    () => (Array.isArray(params.id) ? params.id[0] : params.id),
-    [params.id]
-  );
+// ⚙️ metadata segura (sem ícones/manifest para evitar 404)
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const book = await getBook(Number(id)).catch(() => null);
+  const title = book?.title ? `${book.title}` : 'Livro';
+  const description =
+    book?.synopsis ?? 'Detalhes do livro, status de leitura e ações rápidas.';
+  return {
+    title,
+    description,
+    icons: undefined,
+    manifest: undefined,
+  };
+}
 
-  const router = useRouter();
-  const { state, deleteBook } = useBooks();
-  const { showToast } = useToast();
+export const dynamic = 'force-dynamic';
 
-  /** Busca o livro no estado global */
-  const maybeBook: Book | undefined = state.books.find((b) => b.id === id);
+export default async function BookDetailsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const n = Number(id);
+  if (!Number.isFinite(n)) notFound();
 
-  /** Se não encontrar, mostra uma tela simples de “não encontrado” */
-  if (!maybeBook) {
-    return (
-      <main className="mx-auto max-w-3xl px-4 py-8">
-        <Breadcrumbs
-          items={[
-            { label: 'Início', href: '/' },
-            { label: 'Biblioteca', href: '/library' },
-            { label: 'Livro não encontrado' },
-          ]}
-        />
-        <p className="text-slate-600">Livro não encontrado.</p>
-        <Link
-          href="/library"
-          className="underline text-primary hover:text-blue-700"
-        >
-          Voltar
-        </Link>
-      </main>
-    );
-  }
+  const book = await getBook(n);
+  if (!book) notFound();
 
-  /** A partir daqui já temos o livro */
-  const book: Book = maybeBook;
-
-  /** Estado do diálogo de confirmação de exclusão */
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  /** Estados de carregamento por ação (para trocar rótulo → spinner) */
-  const [isReading, setReading] = useState(false);
-  const [isBack, setBack] = useState(false);
-  const [isEditing, setEditing] = useState(false);
-  const [isDeleting, setDeleting] = useState(false);
-
-  /** Calcula o % de progresso (clamp 0–100) */
-  const pct =
-    typeof book.pages === 'number' &&
-    book.pages > 0 &&
-    typeof book.currentPage === 'number'
-      ? Math.min(100, Math.round((book.currentPage / book.pages) * 100))
-      : null;
-
-  /** Ao clicar no botão Excluir (fora do diálogo), abre o modal */
-  function handleDeleteClick() {
-    setConfirmOpen(true);
-  }
-
-  /** Confirma exclusão dentro do modal */
-  function confirmDelete() {
-    setDeleting(true); // ativa spinner no botão “Excluir” da barra de ações
-    deleteBook(book.id);
-    setConfirmOpen(false);
-    showToast({
-      title: 'Livro excluído',
-      message: `“${book.title}” foi removido.`,
-      variant: 'success',
-    });
-    router.push('/library'); // navega e desmonta a página (spinners somem naturalmente)
-  }
+  const cover = normalizeCover(book.cover);
+  const total = book.pages ?? 0;
+  const curr = book.currentPage ?? 0;
+  const progress = pct(curr, total);
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Navegação hierárquica */}
-      <Breadcrumbs
-        items={[
-          { label: 'Início', href: '/' },
-          { label: 'Biblioteca', href: '/library' },
-          { label: book.title },
-        ]}
-      />
-
-      {/* Ações principais com estados de carregamento */}
-      <div className="mb-4 flex gap-2">
-        {book.fileUrl && (
+    <main className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 lg:px-8 py-6">
+      {/* Breadcrumb / topo */}
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <Link
-            href={`/books/${book.id}/read`}
-            onClick={() => setReading(true)}
-            aria-busy={isReading}
-            className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm transition-all duration-300 ${
-              isReading ? 'pointer-events-none opacity-60' : 'hover:bg-slate-50'
-            }`}
+            href="/library"
+            className="rounded-md border px-2 py-1 text-sm hover:bg-muted"
           >
-            {isReading ? (
-              <>
-                <Spinner /> <span className="ml-2">Abrindo…</span>
-              </>
-            ) : (
-              'Ler'
-            )}
+            ← Biblioteca
           </Link>
-        )}
-
-        <Link
-          href="/library"
-          onClick={() => setBack(true)}
-          aria-busy={isBack}
-          className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm transition-all duration-300 ${
-            isBack ? 'pointer-events-none opacity-60' : 'hover:bg-slate-50'
-          }`}
-        >
-          {isBack ? (
-            <>
-              <Spinner /> <span className="ml-2">Voltando…</span>
-            </>
-          ) : (
-            'Voltar'
-          )}
-        </Link>
-
-        <Link
-          href={`/books/${book.id}/edit`}
-          onClick={() => setEditing(true)}
-          aria-busy={isEditing}
-          className={`inline-flex items-center rounded-md border px-3 py-1.5 text-sm transition-all duration-300 ${
-            isEditing ? 'pointer-events-none opacity-60' : 'hover:bg-slate-50'
-          }`}
-        >
-          {isEditing ? (
-            <>
-              <Spinner /> <span className="ml-2">Abrindo editor…</span>
-            </>
-          ) : (
-            'Editar'
-          )}
-        </Link>
-
-        <button
-          onClick={handleDeleteClick}
-          aria-busy={isDeleting}
-          disabled={isDeleting}
-          className={`inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-sm transition-all duration-200 ${
-            isDeleting
-              ? 'text-red-700 opacity-60'
-              : 'text-red-700 hover:bg-red-50'
-          }`}
-        >
-          {isDeleting ? (
-            <>
-              <Spinner /> <span className="ml-2">Excluindo…</span>
-            </>
-          ) : (
-            'Excluir'
-          )}
-        </button>
-      </div>
-
-      {/* Capa + informações do livro */}
-      <div className="flex items-start gap-4">
-        {book.cover ? (
-          // Dica: aqui você pode trocar para <Image /> do next com normalização de URL,
-          // mas mantendo <img> simples funciona.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={book.cover}
-            alt={book.title}
-            className="h-40 w-28 flex-shrink-0 rounded-md object-cover transition-all duration-300 ease-in-out"
-          />
-        ) : (
-          <div className="h-40 w-28 flex-shrink-0 rounded-md bg-slate-100" />
-        )}
-
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-primary">{book.title}</h1>
-          <p className="text-slate-600">
-            {book.author}{' '}
-            {typeof book.year === 'number' ? `• ${book.year}` : ''}
-          </p>
-
-          {/* Metadados */}
-          <div className="mt-2 space-y-1 text-sm">
-            {book.genre && <p>Gênero: {book.genre}</p>}
-            {book.status && <p>Status: {book.status}</p>}
-
-            {/* Avaliação em estrelas (texto com ícones).
-               Se quiser, posso trocar por um componente ReadOnlyStars. */}
-            {typeof book.rating === 'number' && book.rating > 0 && (
-              <div className="mt-1">
-                <ReadOnlyStars
-                  value={book.rating}
-                  max={5}
-                  showValue
-                  sizeRem={1.0}
-                />
-              </div>
-            )}
-
-            {/* ✅ Progresso visual (barra) */}
-            {typeof pct === 'number' && (
-              <div className="mt-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Progresso</span>
-                  <span aria-live="polite">{pct}%</span>
-                </div>
-                <Progress value={pct} className="mt-1 h-2" />
-              </div>
-            )}
-
-            {/* Página atual / total */}
-            {typeof book.pages === 'number' &&
-              typeof book.currentPage === 'number' && (
-                <p>
-                  Página atual: {book.currentPage} / {book.pages}
-                </p>
-              )}
-            {book.isbn && <p>ISBN: {book.isbn}</p>}
-          </div>
+          <span className="text-xs text-muted-foreground">/</span>
+          <span className="text-sm text-muted-foreground">Detalhes</span>
         </div>
       </div>
 
-      {/* Sinopse e Notas */}
-      {book.synopsis && (
-        <p className="mt-6 whitespace-pre-wrap">{book.synopsis}</p>
-      )}
-      {book.notes && (
-        <>
-          <h2 className="mt-8 text-lg font-medium">Notas</h2>
-          <p className="mt-2 whitespace-pre-wrap">{book.notes}</p>
-        </>
-      )}
+      {/* Grid principal */}
+      <section className="grid grid-cols-1 gap-6 md:grid-cols-12">
+        {/* Coluna da capa */}
+        <div className="md:col-span-4">
+          <div className="overflow-hidden rounded-xl border bg-[rgb(var(--card))] shadow-sm">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={cover}
+              alt={book.title ? `Capa de ${book.title}` : 'Capa do livro'}
+              className="block aspect-[3/4] w-full object-cover"
+            />
+          </div>
 
-      {/* Diálogo de confirmação para excluir */}
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title="Excluir livro"
-        description={`Confirma excluir “${book.title}”? Essa ação não pode ser desfeita.`}
-        confirmLabel="Excluir"
-        cancelLabel="Cancelar"
-        onConfirm={confirmDelete}
-      />
+          {/* Ações (reuso, sem <li>) */}
+          <div className="mt-4 rounded-xl border bg-[rgb(var(--card))] p-3 shadow-sm">
+            <BookActions
+              id={book.id}
+              fileUrl={book.fileUrl}
+              currentStatus={book.status as any}
+              currentRating={book.rating ?? 0}
+            />
+          </div>
+        </div>
+
+        {/* Coluna info */}
+        <div className="md:col-span-8">
+          <div className="rounded-xl border bg-[rgb(var(--card))] p-5 shadow-sm">
+            <h1 className="text-2xl font-semibold text-foreground">
+              {book.title ?? 'Sem título'}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {book.author ?? 'Autor desconhecido'}
+            </p>
+
+            {/* Meta */}
+            <div className="mt-4 flex flex-wrap gap-3 text-sm text-muted-foreground">
+              {book.genre?.name ? (
+                <span className="rounded-md border px-2 py-0.5">
+                  {book.genre.name}
+                </span>
+              ) : null}
+              {book.year ? <span>Ano: {book.year}</span> : null}
+              {book.pages ? <span>Páginas: {book.pages}</span> : null}
+              <span>Status: {statusBadge(book.status as any)}</span>
+            </div>
+
+            {/* Progresso */}
+            <div className="mt-5">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-sm font-medium">Progresso</span>
+                <span className="text-xs text-muted-foreground">
+                  {progress}%{' '}
+                  {total > 0
+                    ? `(página ${Math.min(curr + 1, total)} de ${total})`
+                    : ''}
+                </span>
+              </div>
+              <Progress value={progress} aria-label="Progresso de leitura" />
+            </div>
+
+            {/* Sinopse */}
+            {book.synopsis ? (
+              <div className="prose prose-sm prose-slate dark:prose-invert mt-6 max-w-none">
+                <h2 className="mb-2 text-base font-semibold">Sinopse</h2>
+                <p className="whitespace-pre-wrap">{book.synopsis}</p>
+              </div>
+            ) : null}
+
+            {/* Acesso rápido */}
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Link
+                href={`/books/${book.id}/read`}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Abrir leitor
+              </Link>
+              <Link
+                href={`/books/${book.id}/edit`}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Editar
+              </Link>
+              {book.fileUrl ? (
+                <a
+                  href={book.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                >
+                  Baixar PDF
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

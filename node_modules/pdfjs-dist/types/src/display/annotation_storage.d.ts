@@ -35,6 +35,14 @@ export class AnnotationStorage {
      * @returns {boolean}
      */
     has(key: string): boolean;
+    /**
+     * @returns {Object | null}
+     */
+    getAll(): Object | null;
+    /**
+     * @param {Object} obj
+     */
+    setAll(obj: Object): void;
     get size(): number;
     resetModified(): void;
     /**
@@ -63,7 +71,6 @@ export class AnnotationStorage {
         ids: Set<string>;
         hash: string;
     };
-    [Symbol.iterator](): MapIterator<[any, any]>;
     #private;
 }
 /**

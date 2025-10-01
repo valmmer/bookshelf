@@ -1,141 +1,130 @@
+// src/components/book/BookCard.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import Image from 'next/image';
+import type { ReadingStatus } from '@/server/db/types';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import Badge from '@/components/ui/badge';
-import ReadOnlyStars from '@/components/book/ReadOnlyStars';
 import { Progress } from '@/components/ui/progress';
+import Badge from '@/components/ui/badge';
+import BookActions from './BookActions';
 
-export type Book = {
-  id: string;
-  title: string;
-  author?: string;
-  cover?: string | null;
-  genres?: string[];
-  rating?: number;
-  status?: string;
-  pages?: number;
-  currentPage?: number;
-};
-
-type Props = { book: Book };
-
-/**
- * Normaliza a URL da capa:
- * - "http(s)://localhost:PORT/..."  -> "/..."
- * - "http(s)://127.0.0.1:PORT/..."  -> "/..."
- * - já relativa ("/covers/x.jpg")    -> mantém
- * - vazia/erro                        -> "/file.svg"
- */
-function normalizeCoverUrl(u?: string | null) {
-  if (!u) return '/file.svg';
-  try {
-    const noLocalhost = u
-      .replace(/^https?:\/\/localhost:\d+/i, '')
-      .replace(/^https?:\/\/127\.0\.0\.1:\d+/i, '');
-    const withSlash = noLocalhost.startsWith('/')
-      ? noLocalhost
-      : `/${noLocalhost}`;
-    return withSlash || '/file.svg';
-  } catch {
-    return '/file.svg';
-  }
+function cn(...a: Array<string | undefined | null | false>) {
+  return a.filter(Boolean).join(' ');
 }
 
-export default function BookCard({ book }: Props) {
-  // calcula progresso (se houver páginas)
-  const pct =
-    typeof book.pages === 'number' &&
-    book.pages > 0 &&
-    typeof book.currentPage === 'number'
-      ? Math.min(100, Math.round((book.currentPage / book.pages) * 100))
-      : null;
+type Props = {
+  id: number;
+  title: string;
+  author?: string | null;
+  year?: number | null;
+  pages?: number | null;
+  currentPage?: number | null;
+  status?: ReadingStatus | null;
+  genre?: { name: string } | null;
+  cover?: string | null;
+  fileUrl?: string | null;
+  rating?: number | null; // 👈 vem do DB
 
-  // src reativa (normalizada) + fallback em caso de erro
-  const [imgSrc, setImgSrc] = useState<string>(normalizeCoverUrl(book.cover));
+  className?: string;
+  as?: 'li' | 'div' | 'article';
+};
 
-  // se a prop "cover" mudar, re-normaliza e reseta o fallback
-  useEffect(() => {
-    setImgSrc(normalizeCoverUrl(book.cover));
-  }, [book.cover]);
+function statusBadge(status?: ReadingStatus | null) {
+  if (!status)
+    return <Badge className="bg-muted text-foreground">Indefinido</Badge>;
+
+  const map: Record<ReadingStatus, { label: string; className: string }> = {
+    QUERO_LER: { label: 'Pendente', className: 'bg-gray-200 text-gray-800' },
+    LENDO: { label: 'Lendo', className: 'bg-blue-200 text-blue-800' },
+    LIDO: { label: 'Lido', className: 'bg-green-200 text-green-800' },
+    PAUSADO: { label: 'Pausado', className: 'bg-yellow-200 text-yellow-800' },
+    ABANDONADO: { label: 'Abandonado', className: 'bg-red-200 text-red-800' },
+  };
+
+  const { label, className } = map[status];
+  return <Badge className={className}>{label}</Badge>;
+}
+
+export default function BookCard({
+  id,
+  title,
+  author,
+  year,
+  pages,
+  currentPage,
+  status,
+  genre,
+  cover,
+  fileUrl,
+  rating, // 👈 receber
+  className,
+  as = 'li',
+}: Props) {
+  const totalPages = pages ?? 0;
+  const curr = currentPage ?? 0;
+  const progress =
+    totalPages > 0 ? Math.min(100, Math.round((curr / totalPages) * 100)) : 0;
+
+  const Root: any = as;
+  const rootProps = as === 'li' ? {} : { role: 'listitem' };
 
   return (
-    <Link
-      href={`/books/${book.id}`}
-      className="group rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`Abrir detalhes de ${book.title}`}
+    <Root
+      {...rootProps}
+      className={cn(
+        // 👇 limita o tamanho do card (não importa o quão largo esteja o grid)
+        'group rounded-2xl border bg-card p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md max-w-[240px] sm:max-w-[260px] mx-auto',
+        className
+      )}
     >
-      <Card className="overflow-hidden rounded-2xl transition group-hover:shadow-md">
-        <CardHeader className="p-0">
-          {/* Área fixa para evitar layout shift */}
-          <div className="relative mx-auto mt-4 h-[192px] w-[128px] sm:h-[240px] sm:w-[160px]">
-            <Image
-              src={imgSrc}
-              alt={`Capa de ${book.title}`}
-              fill
-              sizes="(max-width: 640px) 128px, 160px"
-              className="rounded-xl bg-muted object-cover"
-              onError={() => setImgSrc('/file.svg')}
-              priority={false}
-            />
-          </div>
-        </CardHeader>
+      {/* Capa — usamos um contêiner de tamanho fixo responsivo para evitar blur/estouro */}
+      <Link href={`/books/${id}`} className="block">
+        <div className="mx-auto h-56 w-40 sm:h-64 sm:w-48 lg:h-72 lg:w-52 overflow-hidden rounded-lg border bg-muted/20">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt={title ? `Capa de ${title}` : 'Capa'}
+            src={cover || '/covers/placeholder-cover.jpg'}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+          />
+        </div>
+      </Link>
 
-        <CardContent className="p-4">
-          <h3
-            className="line-clamp-2 text-base font-semibold sm:text-lg"
-            title={book.title}
-          >
-            {book.title}
-          </h3>
+      {/* Título + autor */}
+      <h3 className="mt-3 line-clamp-2 text-sm font-semibold">
+        {title ?? 'Sem título'}
+      </h3>
+      <p className="text-xs text-muted-foreground">
+        {author ?? 'Autor desconhecido'}
+      </p>
 
-          {book.author && (
-            <p className="line-clamp-1 text-sm text-muted-foreground">
-              {book.author}
-            </p>
-          )}
+      {/* Metadados */}
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {year ? <span>Ano: {year}</span> : null}
+        {pages ? <span>Páginas: {pages}</span> : null}
+        {genre?.name ? <span>· {genre.name}</span> : null}
+      </div>
 
-          {/* Estrelas (pequenas) */}
-          {typeof book.rating === 'number' && book.rating > 0 && (
-            <div className="mt-1">
-              <ReadOnlyStars
-                value={book.rating}
-                showValue={false}
-                sizeRem={0.875}
-              />
-            </div>
-          )}
+      {/* Status */}
+      <div className="mt-2">{statusBadge(status)}</div>
 
-          {/* Status */}
-          {book.status && (
-            <div className="mt-2">
-              <Badge variant="muted" className="rounded-full text-xs">
-                {book.status}
-              </Badge>
-            </div>
-          )}
+      {/* Progresso */}
+      <div className="mt-3">
+        <Progress value={progress} aria-label="Progresso de leitura" />
+        <div className="mt-1 text-right text-xs text-muted-foreground">
+          {progress}%
+        </div>
+      </div>
 
-          {/* Progresso */}
-          {typeof pct === 'number' && (
-            <div className="mt-2">
-              <Progress value={pct} className="h-1.5" />
-            </div>
-          )}
-
-          {/* Gêneros (até 2 para não poluir) */}
-          {book.genres && book.genres.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {book.genres.slice(0, 2).map((g) => (
-                <Badge key={g} variant="muted" className="rounded-full text-xs">
-                  {g}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </Link>
+      {/* Ações — agora mandamos a nota vinda do DB */}
+      <div className="mt-3 flex justify-end">
+        <BookActions
+          id={id}
+          fileUrl={fileUrl}
+          currentStatus={status ?? 'QUERO_LER'}
+          currentRating={typeof rating === 'number' ? rating : null} // 👈 aqui
+        />
+      </div>
+    </Root>
   );
 }

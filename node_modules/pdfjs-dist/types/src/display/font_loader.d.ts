@@ -1,6 +1,12 @@
 export class FontFaceObject {
-    constructor(translatedData: any, inspectFont?: null);
+    constructor(translatedData: any, { disableFontFace, fontExtraProperties, inspectFont }: {
+        disableFontFace?: boolean | undefined;
+        fontExtraProperties?: boolean | undefined;
+        inspectFont?: null | undefined;
+    });
     compiledGlyphs: any;
+    disableFontFace: boolean;
+    fontExtraProperties: boolean;
     _inspectFont: any;
     createNativeFontFace(): FontFace | null;
     createFontFaceRule(): string | null;
@@ -20,9 +26,8 @@ export class FontLoader {
     removeNativeFontFace(nativeFontFace: any): void;
     insertRule(rule: any): void;
     clear(): void;
-    loadSystemFont({ systemFontInfo: info, disableFontFace, _inspectFont, }: {
+    loadSystemFont({ systemFontInfo: info, _inspectFont }: {
         systemFontInfo: any;
-        disableFontFace: any;
         _inspectFont: any;
     }): Promise<void>;
     bind(font: any): Promise<void>;

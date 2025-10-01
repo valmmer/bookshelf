@@ -1,104 +1,145 @@
 // src/app/books/[id]/read/page.tsx
-'use client';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
+import { cache } from 'react';
+import { getBook } from '@/server/db/books';
+import ReaderClient from './ReaderClient';
 
-import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { useBooks } from '@/store/books';
-import Breadcrumbs from '@/components/navigation/Breadcrumbs';
+function normalizeUrl(u?: string | null): string | null {
+  if (!u) return null;
+  const s = String(u).trim().toLowerCase();
+  if (
+    !s ||
+    s === 'undefined' ||
+    s === 'null' ||
+    s === '#' ||
+    s === 'about:blank'
+  )
+    return null;
+  // absolutas e caminhos conhecidos
+  return u.startsWith('http') || u.startsWith('/')
+    ? u
+    : /^ebooks\//i.test(u)
+    ? `/${u}`
+    : `/ebooks/${u}`;
+}
 
-// 🔒 carrega o leitor só no client
-const PDFReader = dynamic(() => import('@/components/reader/PDFReader'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-40 items-center justify-center text-sm text-slate-500">
-      Carregando leitor…
-    </div>
-  ),
+function isValidAssetUrl(u?: string | null): u is string {
+  if (!u) return false;
+  const s = String(u).trim().toLowerCase();
+  if (
+    !s ||
+    s === 'undefined' ||
+    s === 'null' ||
+    s === '#' ||
+    s === 'about:blank'
+  )
+    return false;
+  return (
+    u.startsWith('/') || u.startsWith('http://') || u.startsWith('https://')
+  );
+}
+
+type PageProps = { params: Promise<{ id: string }> };
+
+const loadBook = cache(async (id: number) => {
+  const book = await getBook(id);
+  if (!book) throw new Error('NOT_FOUND');
+  return book;
 });
 
-export default function ReadBookPage() {
-  const params = useParams<{ id: string }>();
-  const id = params.id;
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { id } = await params;
+  const idNum = Number(id);
+  if (!Number.isFinite(idNum))
+    return { title: 'Leitor de PDF', description: 'Leitura de livros em PDF' };
 
-  const { state } = useBooks();
-  const [isClient, setIsClient] = useState(false);
-
-  // garante execução só no client
-  useEffect(() => setIsClient(true), []);
-
-  // 🟡 ativa “modo leitor” (esconde Header/Footer e remove paddings do main)
-  useEffect(() => {
-    if (!isClient) return;
-    document.body.dataset.reader = '1';
-    return () => {
-      delete document.body.dataset.reader;
+  try {
+    const book = await loadBook(idNum);
+    const title = `Lendo: ${book.title}`;
+    const description = book.synopsis ?? 'Leitura de livros em PDF';
+    const images = isValidAssetUrl(book.cover)
+      ? [{ url: book.cover }]
+      : undefined;
+    return {
+      title,
+      description,
+      openGraph: images
+        ? { title, description, images }
+        : { title, description },
     };
-  }, [isClient]);
+  } catch {
+    return { title: 'Leitor de PDF', description: 'Leitura de livros em PDF' };
+  }
+}
 
-  const book = state.books.find((b) => b.id === id);
+export default async function ReadBookPage({ params }: PageProps) {
+  const { id: idStr } = await params;
+  const id = Number(idStr);
+  if (!Number.isFinite(id)) notFound();
 
-  if (!book) {
+  let book;
+  try {
+    book = await loadBook(id);
+  } catch {
+    notFound();
+  }
+
+  const pdfUrl = normalizeUrl(book.fileUrl);
+  const startPage =
+    typeof book.currentPage === 'number'
+      ? Math.max(1, book.currentPage + 1)
+      : 1;
+
+  if (!pdfUrl) {
     return (
-      <main className="px-4 py-8">
-        <Breadcrumbs
-          items={[{ label: 'Início', href: '/' }, { label: 'Leitura' }]}
-        />
-        <p>Livro não encontrado.</p>
+      <main className="mx-auto max-w-4xl px-4 py-8">
+        <p className="mb-4 text-sm text-destructive">
+          Arquivo do livro não encontrado ou inválido.
+        </p>
+        <Link className="underline" href={`/books/${id}`}>
+          ← Voltar ao livro
+        </Link>
       </main>
     );
   }
 
-  if (!isClient) return null;
-
   return (
-    // 🟢 ocupa a viewport inteira (sem subtrair altura fixa do footer)
-    <main className="flex min-h-[100dvh] flex-col px-4 py-4 sm:px-6">
-      <Breadcrumbs
-        items={[
-          { label: 'Início', href: '/' },
-          { label: 'Biblioteca', href: '/library' },
-          { label: book.title, href: `/books/${book.id}` },
-          { label: 'Leitura' },
-        ]}
-      />
+    <main className="flex min-h-[calc(100vh-64px)] flex-col">
+      <div className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 lg:px-8 py-2">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/books/${id}`}
+              className="rounded-md border px-2 py-1 text-sm hover:bg-muted"
+            >
+              ← Voltar
+            </Link>
+            <h1 className="text-sm font-medium line-clamp-1">{book.title}</h1>
+          </div>
+        </header>
+      </div>
 
-      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="truncate text-lg font-medium" title={book.title}>
-          {book.title}
-        </h1>
-        <div className="flex gap-2">
-          <a
-            href={book.fileUrl || '#'}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60"
-            aria-disabled={!book.fileUrl}
-            onClick={(e) => !book.fileUrl && e.preventDefault()}
-          >
-            Abrir em nova aba
-          </a>
-          <a
-            href={book.fileUrl || '#'}
-            download
-            className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60"
-            aria-disabled={!book.fileUrl}
-            onClick={(e) => !book.fileUrl && e.preventDefault()}
-          >
-            Baixar PDF
-          </a>
-        </div>
-      </header>
       <div className="flex-1">
-        <PDFReader
-          book={book}
-          fileUrl={book.fileUrl ?? ''}
-          initialPage={
-            typeof book.currentPage === 'number' && book.currentPage > 0
-              ? book.currentPage
-              : 1
-          }
-        />
+        <div className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+          <section
+            className="mx-auto h[calc(100vh-64px-52px)] w-full max-w-[980px] lg:max-w-[1100px] overflow-hidden rounded-xl border bg-[rgb(var(--card))] shadow-sm isolate"
+            aria-label="Área de leitura"
+          >
+            <div className="h-full overflow-auto overscroll-contain">
+              <ReaderClient
+                id={id}
+                title={book.title}
+                fileUrl={pdfUrl}
+                initialPage={startPage}
+                pages={typeof book.pages === 'number' ? book.pages : undefined}
+              />
+            </div>
+          </section>
+        </div>
       </div>
     </main>
   );

@@ -78,10 +78,6 @@ export type AnnotationLayerParameters = {
  * Manage the layer containing all the annotations.
  */
 export class AnnotationLayer {
-    /**
-     * @private
-     */
-    private static get _defaultBorderStyle();
     constructor({ div, accessibilityManager, annotationCanvasMap, annotationEditorUIManager, page, viewport, structTreeLayer, }: {
         div: any;
         accessibilityManager: any;
@@ -105,14 +101,6 @@ export class AnnotationLayer {
      * @memberof AnnotationLayer
      */
     render(params: AnnotationLayerParameters): Promise<void>;
-    /**
-     * Add link annotations to the annotation layer.
-     *
-     * @param {Array<Object>} annotations
-     * @param {IPDFLinkService} linkService
-     * @memberof AnnotationLayer
-     */
-    addLinkAnnotations(annotations: Array<Object>, linkService: IPDFLinkService): Promise<void>;
     /**
      * Update the annotation elements on existing annotation layer.
      *
@@ -152,7 +140,8 @@ export class StampAnnotationElement extends AnnotationElement {
 }
 import { AnnotationStorage } from "./annotation_storage.js";
 declare class AnnotationElement {
-    static _hasPopupData({ contentsObj, richText }: {
+    static _hasPopupData({ titleObj, contentsObj, richText }: {
+        titleObj: any;
         contentsObj: any;
         richText: any;
     }): boolean;
@@ -170,7 +159,6 @@ declare class AnnotationElement {
     renderForms: any;
     svgFactory: any;
     annotationStorage: any;
-    enableComment: any;
     enableScripting: any;
     hasJSActions: any;
     _fieldObjects: any;
@@ -178,12 +166,7 @@ declare class AnnotationElement {
     container: HTMLElement | undefined;
     get _isEditable(): any;
     get hasPopupData(): boolean;
-    get hasCommentButton(): any;
-    get commentButtonPosition(): any[] | null;
-    get commentButtonColor(): string | null;
-    _normalizePoint(point: any): any;
     updateEdited(params: any): void;
-    popup: any;
     resetEdited(): void;
     /**
      * Create an empty container for the annotation's HTML element.
@@ -210,13 +193,10 @@ declare class AnnotationElement {
      * annotations that do not have a Popup entry in the dictionary, but
      * are of a type that works with popups (such as Highlight annotations).
      *
-     * @param {Object} [popupData] - The data for the popup, if any.
-     *
      * @private
      * @memberof AnnotationElement
      */
     private _createPopup;
-    get hasPopupElement(): boolean;
     /**
      * Render the annotation's HTML element(s).
      *
@@ -242,8 +222,6 @@ declare class AnnotationElement {
     public getElementsToTriggerPopup(): Array<HTMLElement> | HTMLElement;
     addHighlightArea(): void;
     _editOnDoubleClick(): void;
-    get width(): number;
-    get height(): number;
     #private;
 }
 export {};

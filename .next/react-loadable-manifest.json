@@ -4,5 +4,11 @@
     "files": [
       "static/chunks/_app-pages-browser_node_modules_next_dist_client_dev_noop-turbopack-hmr_js.js"
     ]
+  },
+  "app\\books\\[id]\\read\\ReaderClient.tsx -> pdfjs-dist/build/pdf": {
+    "id": "app\\books\\[id]\\read\\ReaderClient.tsx -> pdfjs-dist/build/pdf",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_pdfjs-dist_build_pdf_mjs.js"
+    ]
   }
 }

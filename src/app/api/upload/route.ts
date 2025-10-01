@@ -1,117 +1,141 @@
 // src/app/api/upload/route.ts
-// Versão LOCAL: salva arquivos no disco (public/ebooks e public/covers)
-// ✔ Funciona em dev/local (Node runtime). Não persiste na Vercel.
-// ⚠ Se for usar em produção, precisa de servidor com disco persistente.
-
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 
-// Precisa do runtime Node para usar 'fs'
-export const runtime = 'nodejs';
+export const runtime = 'nodejs'; // garante acesso ao fs local
+export const dynamic = 'force-dynamic'; // evita cache desse endpoint
 
-// Mapeia MIME -> extensão segura
-function extFromMime(mime?: string | null): string {
-  if (!mime) return '';
+/** Sanitiza o “corpo” do nome (sem caminho) */
+function safeBaseName(name: string) {
+  const base = path.basename(name || 'file');
+  return base
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacríticos
+    .replace(/\s+/g, '-') // espaços -> hífen
+    .replace(/[^a-zA-Z0-9._-]/g, '') // remove chars perigosos
+    .slice(0, 80);
+}
+
+/** Extensão por MIME (não confia no nome original) */
+function extFromMime(mime: string, fallback = '.bin') {
   const m = mime.toLowerCase();
-  if (m.includes('pdf')) return '.pdf';
-  if (m.includes('png')) return '.png';
-  if (m.includes('jpeg') || m.includes('jpg')) return '.jpg';
-  if (m.includes('webp')) return '.webp';
-  if (m.includes('gif')) return '.gif';
-  if (m.includes('svg')) return '.svg';
-  return '';
+  if (m === 'application/pdf') return '.pdf';
+  if (m === 'image/jpeg') return '.jpg';
+  if (m === 'image/png') return '.png';
+  if (m === 'image/webp') return '.webp';
+  if (m === 'image/gif') return '.gif';
+  return fallback;
 }
 
-// Sanitiza nome (só letras/números/._-), limita tamanho
-function safeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 100);
+async function ensureDir(absPath: string) {
+  await fs.mkdir(absPath, { recursive: true });
 }
 
-export async function POST(req: NextRequest) {
+/** Checagem simples de “assinatura mágica” de PDF */
+function looksLikePdf(buf: Buffer) {
+  // %PDF- (0x25 0x50 0x44 0x46 0x2D)
+  return (
+    buf.length >= 5 &&
+    buf[0] === 0x25 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x44 &&
+    buf[3] === 0x46 &&
+    buf[4] === 0x2d
+  );
+}
+
+const MAX_PDF_BYTES = 100 * 1024 * 1024; // 100MB
+const MAX_IMG_BYTES = 20 * 1024 * 1024; // 20MB
+
+export async function POST(req: Request) {
   try {
-    const contentType = req.headers.get('content-type') || '';
-    if (!contentType.includes('multipart/form-data')) {
-      return NextResponse.json(
-        { error: 'Form inválido: multipart/form-data requerido' },
-        { status: 400 }
-      );
-    }
-
     const form = await req.formData();
-    const pdf = form.get('pdf') as File | null;
-    const cover = form.get('cover') as File | null;
+    const pdf = form.get('pdf');
+    const cover = form.get('cover');
 
-    if (!pdf) {
-      return NextResponse.json({ error: 'PDF é obrigatório' }, { status: 400 });
-    }
-    if (!pdf.type?.includes('pdf')) {
+    if (!(pdf instanceof File)) {
       return NextResponse.json(
-        { error: 'Arquivo deve ser PDF' },
-        { status: 400 }
-      );
-    }
-    if (pdf.size > 50 * 1024 * 1024) {
-      return NextResponse.json({ error: 'PDF até 50MB' }, { status: 413 });
-    }
-    if (cover && !cover.type?.startsWith('image/')) {
-      return NextResponse.json(
-        { error: 'Capa inválida (deve ser image/*)' },
+        { error: 'Arquivo PDF é obrigatório (campo "pdf").' },
         { status: 400 }
       );
     }
 
-    // Pastas destino
-    const publicDir = path.join(process.cwd(), 'public');
-    const ebooksDir = path.join(publicDir, 'ebooks');
-    const coversDir = path.join(publicDir, 'covers');
+    // ---- Validações de tipo/tamanho (PDF) ----
+    if (pdf.type && pdf.type !== 'application/pdf') {
+      return NextResponse.json(
+        { error: 'O arquivo enviado não é um PDF válido.' },
+        { status: 400 }
+      );
+    }
+    if (typeof pdf.size === 'number' && pdf.size > MAX_PDF_BYTES) {
+      return NextResponse.json(
+        { error: `PDF excede ${Math.round(MAX_PDF_BYTES / (1024 * 1024))}MB.` },
+        { status: 400 }
+      );
+    }
 
-    // Garante que as pastas existam
-    await fs.mkdir(ebooksDir, { recursive: true });
-    await fs.mkdir(coversDir, { recursive: true });
+    // ---- Validações de capa (opcional) ----
+    if (cover instanceof File) {
+      if (cover.type && !cover.type.startsWith('image/')) {
+        return NextResponse.json(
+          { error: 'A capa deve ser uma imagem.' },
+          { status: 400 }
+        );
+      }
+      if (typeof cover.size === 'number' && cover.size > MAX_IMG_BYTES) {
+        return NextResponse.json(
+          {
+            error: `Imagem excede ${Math.round(
+              MAX_IMG_BYTES / (1024 * 1024)
+            )}MB.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
-    // Nomeia arquivos de forma única
-    const id = crypto.randomUUID();
+    const root = process.cwd();
+    const ebooksDir = path.join(root, 'public', 'ebooks');
+    const coversDir = path.join(root, 'public', 'covers');
+    await Promise.all([ensureDir(ebooksDir), ensureDir(coversDir)]);
 
-    // ----- salva PDF -----
-    const pdfExt =
-      path.extname((pdf as any).name || '') || extFromMime(pdf.type) || '.pdf';
-    const pdfFilename = safeName(`${id}${pdfExt}`);
-    const pdfPath = path.join(ebooksDir, pdfFilename);
+    // ---- Salvar PDF ----
+    const pdfBuf = Buffer.from(await pdf.arrayBuffer());
 
-    const pdfBuffer = Buffer.from(await pdf.arrayBuffer());
-    await fs.writeFile(pdfPath, pdfBuffer);
+    // checagem de “assinatura” do PDF (mais robusto que confiar no nome)
+    if (!looksLikePdf(pdfBuf)) {
+      return NextResponse.json(
+        { error: 'O arquivo não parece ser um PDF válido.' },
+        { status: 400 }
+      );
+    }
 
-    const pdfUrl = `/ebooks/${pdfFilename}`; // acessível via Next static
+    const pdfExt = extFromMime(pdf.type || 'application/pdf', '.pdf');
+    const pdfName = `${safeBaseName(
+      pdf.name || 'livro'
+    )}-${randomUUID()}${pdfExt}`;
+    await fs.writeFile(path.join(ebooksDir, pdfName), pdfBuf);
+    const pdfUrl = `/ebooks/${pdfName}`; // URL pública
 
-    // ----- salva capa (opcional) -----
+    // ---- Salvar capa (opcional) ----
     let coverUrl: string | null = null;
-    if (cover) {
-      const coverExt =
-        path.extname((cover as any).name || '') ||
-        extFromMime(cover.type) ||
-        '.jpg';
-      const coverFilename = safeName(`${id}${coverExt}`);
-      const coverPath = path.join(coversDir, coverFilename);
-
-      const coverBuffer = Buffer.from(await cover.arrayBuffer());
-      await fs.writeFile(coverPath, coverBuffer);
-
-      coverUrl = `/covers/${coverFilename}`;
+    if (cover instanceof File && cover.size > 0) {
+      const coverBuf = Buffer.from(await cover.arrayBuffer());
+      const coverExt = extFromMime(cover.type || '', '.jpg');
+      const coverName = `${safeBaseName(
+        cover.name || 'cover'
+      )}-${randomUUID()}${coverExt}`;
+      await fs.writeFile(path.join(coversDir, coverName), coverBuf);
+      coverUrl = `/covers/${coverName}`;
     }
 
-    return NextResponse.json({ id, pdfUrl, coverUrl });
+    return NextResponse.json({ pdfUrl, coverUrl }, { status: 200 });
   } catch (err: any) {
-    console.error('Upload LOCAL error:', err);
+    console.error('[api/upload] error:', err);
     return NextResponse.json(
-      {
-        error: 'Erro interno ao salvar localmente',
-        detail: err?.message ?? String(err),
-      },
+      { error: err?.message || 'Falha ao processar upload' },
       { status: 500 }
     );
   }

@@ -17,7 +17,8 @@ export default function Header() {
   // progress bar
   const [isNavigating, setIsNavigating] = useState(false);
   const [progress, setProgress] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const finishRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // sombra sutil quando rolar
   const [scrolled, setScrolled] = useState(false);
@@ -28,33 +29,65 @@ export default function Header() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // inicia barra
+  // helpers de timer
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  const clearFinish = () => {
+    if (finishRef.current) {
+      clearTimeout(finishRef.current);
+      finishRef.current = null;
+    }
+  };
+
+  // inicia barra (garante 1 único intervalo)
   const startProgress = () => {
+    clearTimer();
+    clearFinish();
     setIsNavigating(true);
     setProgress(10);
     timerRef.current = setInterval(() => {
+      // avança suavemente até 90%; conclusão é feita no efeito de rota
       setProgress((p) => (p < 90 ? p + Math.max(1, (90 - p) * 0.08) : p));
     }, 120);
   };
 
-  // conclui ao trocar rota
-  useEffect(() => {
-    if (!isNavigating) return;
+  // conclui barra (usado ao detectar mudança de rota)
+  const finishProgress = () => {
+    clearTimer();
     setProgress(100);
-    const t = setTimeout(() => {
+    clearFinish();
+    finishRef.current = setTimeout(() => {
       setIsNavigating(false);
       setProgress(0);
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearFinish();
     }, 300);
-    return () => clearTimeout(t);
-  }, [pathname, isNavigating]);
+  };
+
+  // ✅ quando a URL muda, finaliza a barra e limpa timers
+  useEffect(() => {
+    if (!isNavigating && !timerRef.current) return;
+    finishProgress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // limpeza ao desmontar
+  useEffect(() => {
+    return () => {
+      clearTimer();
+      clearFinish();
+    };
+  }, []);
 
   const handleNav = (href: string) => (e: React.MouseEvent) => {
     if (isNavigating) return e.preventDefault();
-    e.preventDefault();
+    e.preventDefault(); // mantém acessibilidade sem "click-through"
     setIsMenuOpen(false);
-    startProgress();
-    router.push(href);
+    startProgress(); // feedback imediato
+    router.push(href); // navega; ao concluir, efeito acima finaliza
   };
 
   const navItems = useMemo(
@@ -116,6 +149,7 @@ export default function Header() {
             className="select-none text-lg font-semibold text-slate-900 dark:text-slate-100"
             aria-label="Ir para a página inicial"
             onClick={handleNav('/')}
+            prefetch={false}
           >
             BookShelf
           </Link>
@@ -123,7 +157,6 @@ export default function Header() {
 
         {/* Navegação desktop */}
         <nav className="relative hidden items-center gap-2 md:flex">
-          {/* pill animado (fundo do item ativo) */}
           <div className="relative flex items-center gap-1">
             {navItems.map((item) => {
               const active = isActive(item.href);
@@ -141,29 +174,32 @@ export default function Header() {
                       aria-hidden
                     />
                   )}
-                  <motion.a
-                    onClick={handleNav(item.href)}
-                    aria-current={active ? 'page' : undefined}
-                    className={[
-                      'relative z-[1] inline-flex cursor-pointer select-none items-center',
-                      'px-3 py-1.5 text-sm font-medium',
-                      'text-slate-800 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white',
-                      'rounded-lg transition-colors focus:outline-none focus-visible:ring-2',
-                      'focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                    ].join(' ')}
-                    whileHover={{ y: -1 }}
-                  >
-                    {item.label}
-                    <span
+                  <motion.div whileHover={{ y: -1 }}>
+                    <Link
+                      href={item.href}
+                      prefetch={false}
+                      onClick={handleNav(item.href)}
+                      aria-current={active ? 'page' : undefined}
                       className={[
-                        'absolute -bottom-[2px] left-2 right-2 h-[2px] rounded',
-                        active
-                          ? 'bg-sky-700/70 dark:bg-sky-300/80'
-                          : 'bg-transparent group-hover:bg-slate-900/20 dark:group-hover:bg-white/20',
+                        'relative z-[1] inline-flex cursor-pointer select-none items-center',
+                        'px-3 py-1.5 text-sm font-medium',
+                        'text-slate-800 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white',
+                        'rounded-lg transition-colors focus:outline-none focus-visible:ring-2',
+                        'focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                       ].join(' ')}
-                      aria-hidden
-                    />
-                  </motion.a>
+                    >
+                      {item.label}
+                      <span
+                        className={[
+                          'absolute -bottom-[2px] left-2 right-2 h-[2px] rounded',
+                          active
+                            ? 'bg-sky-700/70 dark:bg-sky-300/80'
+                            : 'bg-transparent group-hover:bg-slate-900/20 dark:group-hover:bg-white/20',
+                        ].join(' ')}
+                        aria-hidden
+                      />
+                    </Link>
+                  </motion.div>
                 </div>
               );
             })}
@@ -172,7 +208,6 @@ export default function Header() {
 
         {/* Ações à direita */}
         <div className="flex items-center gap-3">
-          {/* ThemeToggle maior, com área de clique ampliada */}
           <div className="inline-flex scale-[1.15] items-center justify-center">
             <div className="rounded-xl border border-border/60 p-1.5 hover:bg-muted/60">
               <ThemeToggle />
@@ -243,7 +278,9 @@ export default function Header() {
                 const active = isActive(item.href);
                 return (
                   <li key={item.href}>
-                    <a
+                    <Link
+                      href={item.href}
+                      prefetch={false}
                       onClick={handleNav(item.href)}
                       aria-current={active ? 'page' : undefined}
                       className={[
@@ -254,13 +291,12 @@ export default function Header() {
                       ].join(' ')}
                     >
                       {item.label}
-                    </a>
+                    </Link>
                   </li>
                 );
               })}
             </ul>
 
-            {/* Tema dentro do menu mobile (maior também) */}
             <div className="mt-3 border-t pt-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-700 dark:text-slate-300">

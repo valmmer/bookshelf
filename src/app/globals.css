@@ -67,3 +67,7 @@ html.theme-transition, html.theme-transition * {
 }
 
 /* (Mantive seus estilos anteriores, inclusive reader-mode etc.) */
+/* Neutraliza transforms herdados só dentro do leitor */
+.reader-shell canvas {
+  transform: none !important;
+}
