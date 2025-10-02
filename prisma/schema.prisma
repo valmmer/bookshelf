@@ -8,7 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enum de status de leitura
 enum ReadingStatus {
   QUERO_LER
   LENDO
@@ -17,7 +16,6 @@ enum ReadingStatus {
   ABANDONADO
 }
 
-// Gêneros (nome único)
 model Genre {
   id        Int      @id @default(autoincrement())
   name      String   @unique
@@ -26,7 +24,6 @@ model Genre {
   books     Book[]
 }
 
-// Livro (modelo expandido)
 model Book {
   id          Int            @id @default(autoincrement())
   title       String
@@ -34,17 +31,16 @@ model Book {
   year        Int?
   pages       Int            @default(0)
   rating      Int?
-  synopsis    String?
+  synopsis    String?        // ← REMOVIDO @db.Text
   cover       String?
   fileUrl     String?
   status      ReadingStatus  @default(QUERO_LER)
   currentPage Int            @default(0)
   isbn        String?
-  notes       String?
+  notes       String?        // ← REMOVIDO @db.Text
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  // relação com Genre
   genreId     Int?
   genre       Genre?         @relation(fields: [genreId], references: [id])
 

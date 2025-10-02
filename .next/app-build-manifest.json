@@ -16,16 +16,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/books/[id]/loading": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/books/[id]/loading.js"
-    ],
-    "/books/[id]/read/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/books/[id]/read/page.js"
-    ],
     "/books/new/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -36,6 +26,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/_not-found/page.js"
     ],
+    "/api/upload/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/upload/route.js"
+    ],
     "/library/loading": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -45,6 +40,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/library/page.js"
+    ],
+    "/books/[id]/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/books/[id]/loading.js"
+    ],
+    "/books/[id]/read/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/books/[id]/read/page.js"
     ]
   }
 }
