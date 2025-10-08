@@ -1,81 +1,97 @@
 // src/app/api/books/route.ts
-import { NextResponse } from "next/server";
-// ⚠️ Se não tiver alias "@", troque por imports relativos:
-// import { createBook, getBooks } from "../../server/db/books";
-// import { bookFormSchema } from "../../features/books/schema";
-import { createBook, getBooks } from "@/server/db/books";
-import { bookFormSchema } from "@/features/books/schema";
+import { NextResponse } from 'next/server';
+import { createBook, listBooks } from '@/server/db/books';
+import { bookFormSchema } from '@/features/books/schema';
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
+// GET /api/books
 export async function GET() {
-  const books = await getBooks();
-  return NextResponse.json({ books }, { status: 200 });
+  // usamos a listagem oficial do server
+  const data = await listBooks({});
+  // sempre devolve array
+  return NextResponse.json({ books: data.items ?? [] }, { status: 200 });
 }
 
+// POST /api/books
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    // trate o corpo como unknown para evitar any
+    const raw: unknown = await req.json();
 
-    // 💡 fallback defensivo: transforma "" -> null em campos opcionais
+    // 🔧 Sanitização leve: converte "" para undefined/null conforme o campo
+    // (trabalhamos em cima de um objeto "plain", sem modificar o raw)
+    const b =
+      raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+
     const sanitized = {
-      ...body,
-      year: body?.year === "" ? null : body?.year,
-      pages: body?.pages === "" ? null : body?.pages,
-      currentPage: body?.currentPage === "" ? null : body?.currentPage,
-      rating: body?.rating === "" ? null : body?.rating,
-      synopsis: body?.synopsis === "" ? null : body?.synopsis,
-      isbn: body?.isbn === "" ? null : body?.isbn,
-      notes: body?.notes === "" ? null : body?.notes,
-      genre: body?.genre?.toString().trim() || null,
-      // aceita URL http/https OU caminho relativo começando com "/"
+      ...b,
+      year: b?.year === '' ? undefined : b?.year,
+      pages: b?.pages === '' ? undefined : b?.pages,
+      currentPage: b?.currentPage === '' ? undefined : b?.currentPage,
+      rating: b?.rating === '' ? undefined : b?.rating,
+      synopsis: b?.synopsis === '' ? null : b?.synopsis,
+      isbn: b?.isbn === '' ? null : b?.isbn,
+      notes: b?.notes === '' ? null : b?.notes,
+      genre:
+        typeof b?.genre === 'string' && b.genre.trim().length > 0
+          ? b.genre.trim()
+          : undefined,
       cover:
-        typeof body?.cover === "string" &&
-        (body.cover.startsWith("/") || /^https?:\/\//i.test(body.cover))
-          ? body.cover
-          : body?.cover
-          ? null
-          : null,
+        typeof b?.cover === 'string' &&
+        (b.cover.startsWith('/') || /^https?:\/\//i.test(b.cover))
+          ? b.cover
+          : undefined,
       fileUrl:
-        typeof body?.fileUrl === "string" &&
-        (body.fileUrl.startsWith("/") || /^https?:\/\//i.test(body.fileUrl))
-          ? body.fileUrl
-          : body?.fileUrl
-          ? null
-          : null,
+        typeof b?.fileUrl === 'string' &&
+        (b.fileUrl.startsWith('/') || /^https?:\/\//i.test(b.fileUrl))
+          ? b.fileUrl
+          : undefined,
     };
 
+    // ✅ validação com Zod (sem any)
     const parsed = bookFormSchema.safeParse(sanitized);
     if (!parsed.success) {
-      console.error("Zod issues:", parsed.error.flatten());
       return NextResponse.json(
-        { error: "Dados inválidos", issues: parsed.error.format() },
+        { error: 'Dados inválidos', issues: parsed.error.format() },
         { status: 400 }
       );
     }
 
-    const book = await createBook({
-      title: parsed.data.title,
-      author: parsed.data.author,
-      status: parsed.data.status,               // "QUERO_LER" | "LENDO" | ...
-      year: parsed.data.year ?? null,
-      pages: parsed.data.pages ?? null,
-      rating: parsed.data.rating ?? null,
-      synopsis: parsed.data.synopsis ?? null,
-      cover: parsed.data.cover ?? null,
-      fileUrl: parsed.data.fileUrl ?? null,
-      currentPage: parsed.data.currentPage ?? 0,
-      isbn: parsed.data.isbn ?? null,
-      notes: parsed.data.notes ?? null,
-      genre: parsed.data.genre ?? null,         // nome → server resolve genreId
-    });
+    const d = parsed.data;
 
+    // ✅ Monta o input SEM enviar null para campos numéricos opcionais,
+    //    e só inclui quando forem number de fato
+    const input = {
+      title: d.title,
+      author: d.author,
+      status: d.status, // "QUERO_LER" | "LENDO" | ...
+
+      ...(typeof d.year === 'number' ? { year: d.year } : {}),
+      ...(typeof d.pages === 'number' ? { pages: d.pages } : {}),
+      ...(typeof d.rating === 'number' ? { rating: d.rating } : {}),
+      ...(typeof d.currentPage === 'number'
+        ? { currentPage: d.currentPage }
+        : {}),
+
+      synopsis: d.synopsis ?? null,
+      cover: d.cover ?? null,
+      fileUrl: d.fileUrl ?? null,
+      isbn: d.isbn ?? null,
+      notes: d.notes ?? null,
+
+      // gênero como string | undefined (o server resolve genreId)
+      ...(d.genre ? { genre: d.genre } : {}),
+    } as const;
+
+    const book = await createBook(input);
     return NextResponse.json({ ok: true, book }, { status: 201 });
-  } catch (err: any) {
-    console.error("Erro API /books POST:", err);
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err ?? 'unknown error');
     return NextResponse.json(
-      { error: "Erro interno", detail: err?.message },
+      { error: 'Erro interno', detail: message },
       { status: 500 }
     );
   }

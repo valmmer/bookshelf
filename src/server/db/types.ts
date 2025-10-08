@@ -1,4 +1,5 @@
 // src/server/db/types.ts
+
 export type ReadingStatus =
   | 'QUERO_LER'
   | 'LENDO'
@@ -42,7 +43,11 @@ export interface BookCreateInput {
   genreId?: number | null; // pode vir string na UI → convertemos na action
 }
 
-export interface BookUpdateInput extends Partial<BookCreateInput> {}
+/**
+ * ✅ Use type alias em vez de interface vazia estendendo Partial<...>
+ * (evita @typescript-eslint/no-empty-object-type)
+ */
+export type BookUpdateInput = Partial<BookCreateInput>;
 
 export interface ListOptions {
   q?: string; // busca por título/autor

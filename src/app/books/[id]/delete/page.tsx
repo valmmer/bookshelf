@@ -6,6 +6,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/ToastProvider';
+import { deleteBookAction } from '@/app/actions/bookActions';
 
 export default function DeleteBookPage() {
   const params = useParams<{ id: string }>();
@@ -24,17 +25,13 @@ export default function DeleteBookPage() {
 
     try {
       setLoading(true);
-      const res = await fetch(`/api/books/${id}`, { method: 'DELETE' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.ok) {
-        throw new Error(json?.error || `Falha ao excluir (${res.status})`);
-      }
+      const res = await deleteBookAction(id);
+      if (!res.ok) throw new Error(res.error || 'Falha ao excluir');
       showToast({
         title: 'Livro excluído',
         message: 'Removido com sucesso.',
         variant: 'success',
       });
-      // volta para a biblioteca e força revalidação
       router.replace('/library');
       router.refresh();
     } catch (err: any) {

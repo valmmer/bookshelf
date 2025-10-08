@@ -110,15 +110,6 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
-// Validate ../../src/app/api/blob-selftest/route.ts
-{
-  type __IsExpected<Specific extends RouteHandlerConfig<"/api/blob-selftest">> = Specific
-  const handler = {} as typeof import("../../src/app/api/blob-selftest/route.js")
-  type __Check = __IsExpected<typeof handler>
-  // @ts-ignore
-  type __Unused = __Check
-}
-
 // Validate ../../src/app/api/books/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/books">> = Specific

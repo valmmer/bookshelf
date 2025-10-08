@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import type { ReadingStatus } from '@/server/db/types';
-import { createBookAction } from '@/app/actions/bookActions';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 
@@ -16,7 +15,7 @@ type Values = {
   genre: string;
   year?: number | null;
   pages?: number | null;
-  currentPage?: number | null; // usado só para calcular a barra de progresso
+  currentPage?: number | null; // 1-based na UI; convertemos no submit
   status: ReadingStatus;
   rating?: number | null;
   synopsis: string;
@@ -28,6 +27,10 @@ const INPUT_BASE =
   'w-full rounded-md border bg-white dark:bg-white text-slate-900 placeholder:text-slate-500 px-3 py-2 text-sm';
 const LABEL = 'mb-1 block text-xs font-medium text-muted-foreground';
 
+// limites também no client (alinhados com o server)
+const MAX_PDF_MB = Number(process.env.NEXT_PUBLIC_MAX_PDF_MB ?? 50);
+const MAX_IMG_MB = Number(process.env.NEXT_PUBLIC_MAX_IMG_MB ?? 20);
+
 function toIntOrNull(v: FormDataEntryValue | null) {
   if (v == null || v === '') return null;
   const n = Number(v);
@@ -36,11 +39,8 @@ function toIntOrNull(v: FormDataEntryValue | null) {
 
 export default function NewBookPage() {
   const router = useRouter();
-
-  // ref direto do <form> (garante HTMLFormElement real no submit)
   const formRef = useRef<HTMLFormElement | null>(null);
 
-  // uploads locais
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
@@ -57,14 +57,13 @@ export default function NewBookPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // estado base só para calcular a barra de progresso (inputs continuam não-controlados)
   const [values, setValues] = useState<Values>({
     title: '',
     author: '',
     genre: '',
     year: null,
     pages: null,
-    currentPage: null, // UI mostra 1 por padrão, mas o state só muda se o usuário digitar
+    currentPage: null,
     status: 'QUERO_LER',
     rating: null,
     synopsis: '',
@@ -72,22 +71,19 @@ export default function NewBookPage() {
     notes: '',
   });
 
-  // progresso: conta campos realmente preenchidos (nada preenchido = 0%)
   const completion = useMemo(() => {
     const required = [!!values.title.trim(), !!values.author.trim(), !!pdfFile];
-
     const optional = [
       !!values.genre.trim(),
       (values.year ?? 0) > 0,
       (values.pages ?? 0) > 0,
-      (values.currentPage ?? 0) > 0, // só conta se o usuário mexer
+      (values.currentPage ?? 0) > 0,
       (values.rating ?? 0) > 0,
       !!values.synopsis.trim(),
       !!values.isbn.trim(),
       !!values.notes.trim(),
       !!coverFile,
     ];
-
     const anyFilled = [...required, ...optional].some(Boolean);
     if (!anyFilled) return 0;
 
@@ -115,49 +111,39 @@ export default function NewBookPage() {
 
       setSubmitting(true);
 
-      // 1) Upload dos arquivos
+      // 1) Upload para /api/upload
       const fd = new FormData();
       fd.append('pdf', pdfFile);
       if (coverFile) fd.append('cover', coverFile);
 
       const up = await fetch('/api/upload', { method: 'POST', body: fd });
-      if (!up.ok) {
-        let msg = 'Falha no upload';
-        try {
-          const j = await up.json();
-          msg = j?.error || msg;
-        } catch {}
+      const upJson = await up.json().catch(() => ({}));
+      if (!up.ok || !upJson?.ok) {
+        const msg = upJson?.error || `Falha no upload (HTTP ${up.status})`;
         throw new Error(msg);
       }
-      const { pdfUrl, coverUrl }: { pdfUrl: string; coverUrl?: string | null } =
-        await up.json();
+      const pdfUrl: string = upJson.pdfUrl;
+      const coverUrl: string | null | undefined = upJson.coverUrl;
 
-      // 2) Lê os campos do form
+      // 2) Ler campos do form
       const data = new FormData(formEl);
 
       const year = toIntOrNull(data.get('year'));
       const pages = toIntOrNull(data.get('pages'));
 
-      // UI é 1-based; DB é 0-based —> convertemos aqui
-      // Ex.: usuário digita 1 → salvamos 0; 10 → 9.
-      const currentPageUI = toIntOrNull(data.get('currentPage')); // 1, 2, 3...
+      // UI é 1-based; DB é 0-based — convertemos aqui
+      const currentPageUI = toIntOrNull(data.get('currentPage'));
       let currentPage =
         currentPageUI == null ? 0 : Math.max(1, currentPageUI) - 1;
-
-      // Corrige limites com base no total de páginas (se informado)
       if (pages != null && pages > 0) {
-        // 0 … pages-1
         if (currentPage > pages - 1) currentPage = pages - 1;
         if (currentPage < 0) currentPage = 0;
       }
 
-      // Clamp da avaliação (0..5) caso alguém digite valores fora do range
       let rating = toIntOrNull(data.get('rating'));
-      if (rating != null) {
-        rating = Math.max(0, Math.min(5, rating));
-      }
+      if (rating != null) rating = Math.max(0, Math.min(5, rating));
 
-      // 3) Payload alinhado ao schema/ações do servidor
+      // 3) Payload para a API /api/books
       const payload = {
         title: String(data.get('title') || '').trim(),
         author: String(data.get('author') || '').trim(),
@@ -165,38 +151,48 @@ export default function NewBookPage() {
         genre: String(data.get('genre') || '').trim(),
         year,
         pages,
-        currentPage, // 👈 já convertido para 0-based
+        currentPage,
         rating,
         synopsis: String(data.get('synopsis') || ''),
         isbn: String(data.get('isbn') || ''),
         notes: String(data.get('notes') || ''),
-        cover: coverUrl ?? '',
-        fileUrl: pdfUrl, // URL pública devolvida pelo /api/upload
+        cover: coverUrl ?? null,
+        fileUrl: pdfUrl,
       };
 
       if (!payload.title) throw new Error('Informe um título.');
       if (!payload.author) throw new Error('Informe o autor.');
 
-      // 4) Criação no servidor
-      const res = await createBookAction(payload);
-      if (!res.ok) throw new Error(res.error || 'Erro ao salvar');
+      // 4) Criar livro
+      const res = await fetch('/api/books', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          j?.error || `Falha ao criar livro (HTTP ${res.status})`
+        );
+      }
 
-      // ✅ feedback claro antes do redirect
+      const bookId = j?.book?.id;
       toast.success('Livro criado com sucesso!', {
-        description: 'Redirecionando para a Biblioteca…',
+        description: bookId
+          ? `Abrindo /books/${bookId}…`
+          : 'Abrindo Biblioteca…',
       });
 
-      // Spinner curto enquanto navegamos
-      const loadingId = toast.loading('Abrindo Biblioteca…');
-
-      // dá tempo do usuário perceber o sucesso e o loading
-      setTimeout(() => {
-        router.push('/library'); // ← vai para a Biblioteca
-        router.refresh();
-        setTimeout(() => toast.dismiss(loadingId), 300);
-      }, 700);
-    } catch (err: any) {
-      toast.error('Erro ao criar livro', { description: err?.message });
+      if (bookId) {
+        router.push(`/books/${bookId}`);
+      } else {
+        router.push('/library');
+      }
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error('Erro ao criar livro', { description: msg });
+      console.error('[books/new] submit error:', err);
     } finally {
       setSubmitting(false);
     }
@@ -219,7 +215,6 @@ export default function NewBookPage() {
         <Progress value={completion} />
       </div>
 
-      {/* o ref garante que temos um HTMLFormElement real no submit */}
       <form
         ref={formRef}
         onSubmit={handleSubmit}
@@ -241,11 +236,27 @@ export default function NewBookPage() {
             <input
               type="file"
               accept="application/pdf"
-              onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                if (f) {
+                  const sizeMb = f.size / 1024 / 1024;
+                  if (sizeMb > MAX_PDF_MB) {
+                    toast.error(
+                      `O PDF tem ${sizeMb.toFixed(
+                        1
+                      )}MB; o limite é ${MAX_PDF_MB}MB.`
+                    );
+                    e.currentTarget.value = '';
+                    setPdfFile(null);
+                    return;
+                  }
+                }
+                setPdfFile(f);
+              }}
               className={INPUT_BASE}
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Selecione o arquivo do livro em PDF.
+              Máx. {MAX_PDF_MB}MB.
             </p>
           </div>
 
@@ -254,9 +265,28 @@ export default function NewBookPage() {
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                if (f) {
+                  const sizeMb = f.size / 1024 / 1024;
+                  if (sizeMb > MAX_IMG_MB) {
+                    toast.error(
+                      `A imagem tem ${sizeMb.toFixed(
+                        1
+                      )}MB; o limite é ${MAX_IMG_MB}MB.`
+                    );
+                    e.currentTarget.value = '';
+                    setCoverFile(null);
+                    return;
+                  }
+                }
+                setCoverFile(f);
+              }}
               className={INPUT_BASE}
             />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Máx. {MAX_IMG_MB}MB.
+            </p>
           </div>
         </div>
 
@@ -334,15 +364,14 @@ export default function NewBookPage() {
               />
             </div>
 
-            {/* Página atual — 1-based na UI; convertemos para 0-based no submit */}
             <div>
               <label className={LABEL}>Página atual</label>
               <input
                 name="currentPage"
                 type="number"
-                min={1} // 👈 começa em 1 para a pessoa
+                min={1}
                 placeholder="Ex.: 10"
-                defaultValue="1" // 👈 mostra 1 por padrão
+                defaultValue="1"
                 className={INPUT_BASE}
                 onChange={(e) =>
                   setValues((v) => ({

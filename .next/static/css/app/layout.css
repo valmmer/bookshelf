@@ -1,7 +1,7 @@
 /*!*****************************************************************************************************************************************************************************************************************************************************************!*\
   !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[3]!./src/app/globals.css ***!
   \*****************************************************************************************************************************************************************************************************************************************************************/
-/*! tailwindcss v4.1.13 | MIT License | https://tailwindcss.com */
+/*! tailwindcss v4.1.14 | MIT License | https://tailwindcss.com */
 @layer properties;
 @layer theme, base, components, utilities;
 @layer theme {
@@ -446,6 +446,9 @@
   .mt-6 {
     margin-top: calc(var(--spacing) * 6);
   }
+  .mr-1 {
+    margin-right: calc(var(--spacing) * 1);
+  }
   .mr-2 {
     margin-right: calc(var(--spacing) * 2);
   }
@@ -478,9 +481,6 @@
   }
   .ml-2 {
     margin-left: calc(var(--spacing) * 2);
-  }
-  .ml-3 {
-    margin-left: calc(var(--spacing) * 3);
   }
   .ml-auto {
     margin-left: auto;
@@ -559,6 +559,9 @@
   .h-10 {
     height: calc(var(--spacing) * 10);
   }
+  .h-12 {
+    height: calc(var(--spacing) * 12);
+  }
   .h-48 {
     height: calc(var(--spacing) * 48);
   }
@@ -573,6 +576,9 @@
   }
   .h-\[calc\(100\%-1px\)\] {
     height: calc(100% - 1px);
+  }
+  .h-\[calc\(100vh-64px-52px\)\] {
+    height: calc(100vh - 64px - 52px);
   }
   .h-\[calc\(100vh-140px\)\] {
     height: calc(100vh - 140px);
@@ -592,20 +598,14 @@
   .max-h-\[85vh\] {
     max-height: 85vh;
   }
-  .min-h-0 {
-    min-height: calc(var(--spacing) * 0);
-  }
   .min-h-\[60vh\] {
     min-height: 60vh;
   }
-  .min-h-\[90px\] {
-    min-height: 90px;
+  .min-h-\[80px\] {
+    min-height: 80px;
   }
   .min-h-\[calc\(100vh-64px\)\] {
     min-height: calc(100vh - 64px);
-  }
-  .min-h-full {
-    min-height: 100%;
   }
   .min-h-screen {
     min-height: 100vh;
@@ -637,14 +637,8 @@
   .w-8 {
     width: calc(var(--spacing) * 8);
   }
-  .w-9 {
-    width: calc(var(--spacing) * 9);
-  }
   .w-10 {
     width: calc(var(--spacing) * 10);
-  }
-  .w-12 {
-    width: calc(var(--spacing) * 12);
   }
   .w-28 {
     width: calc(var(--spacing) * 28);
@@ -721,8 +715,8 @@
   .min-w-\[10rem\] {
     min-width: 10rem;
   }
-  .min-w-\[80px\] {
-    min-width: 80px;
+  .min-w-\[70px\] {
+    min-width: 70px;
   }
   .min-w-\[var\(--radix-select-trigger-width\)\] {
     min-width: var(--radix-select-trigger-width);
@@ -734,7 +728,7 @@
     flex-shrink: 0;
   }
   .origin-left {
-    transform-origin: left;
+    transform-origin: 0;
   }
   .-translate-x-1\/2 {
     --tw-translate-x: calc(calc(1/2 * 100%) * -1);
@@ -783,11 +777,12 @@
   .cursor-default {
     cursor: default;
   }
-  .cursor-not-allowed {
-    cursor: not-allowed;
-  }
   .cursor-pointer {
     cursor: pointer;
+  }
+  .touch-pan-y {
+    --tw-pan-y: pan-y;
+    touch-action: var(--tw-pan-x,) var(--tw-pan-y,) var(--tw-pinch-zoom,);
   }
   .resize {
     resize: both;
@@ -900,8 +895,11 @@
   .overflow-hidden {
     overflow: hidden;
   }
-  .overscroll-contain {
-    overscroll-behavior: contain;
+  .overflow-x-auto {
+    overflow-x: auto;
+  }
+  .overscroll-auto {
+    overscroll-behavior: auto;
   }
   .rounded {
     border-radius: 0.25rem;
@@ -985,9 +983,6 @@
   }
   .border-transparent {
     border-color: transparent;
-  }
-  .border-t-slate-600 {
-    border-top-color: var(--color-slate-600);
   }
   .border-t-transparent {
     border-top-color: transparent;
@@ -1173,9 +1168,6 @@
   }
   .object-cover {
     object-fit: cover;
-  }
-  .p-0 {
-    padding: calc(var(--spacing) * 0);
   }
   .p-1 {
     padding: calc(var(--spacing) * 1);
@@ -1492,35 +1484,17 @@
   .underline {
     text-decoration-line: underline;
   }
-  .underline-offset-4 {
-    text-underline-offset: 4px;
-  }
-  .opacity-0 {
-    opacity: 0%;
-  }
-  .opacity-25 {
-    opacity: 25%;
-  }
   .opacity-40 {
     opacity: 40%;
   }
-  .opacity-60 {
-    opacity: 60%;
-  }
   .opacity-70 {
     opacity: 70%;
-  }
-  .opacity-75 {
-    opacity: 75%;
   }
   .opacity-80 {
     opacity: 80%;
   }
   .opacity-90 {
     opacity: 90%;
-  }
-  .opacity-100 {
-    opacity: 100%;
   }
   .shadow {
     --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
@@ -1540,10 +1514,6 @@
   }
   .shadow-sm {
     --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-  }
-  .shadow-xs {
-    --tw-shadow: 0 1px 2px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .ring {
@@ -1596,10 +1566,6 @@
   }
   .blur-md {
     --tw-blur: blur(var(--blur-md));
-    filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
-  }
-  .sepia {
-    --tw-sepia: sepia(100%);
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
   }
   .filter {
@@ -1698,29 +1664,6 @@
       }
     }
   }
-  .file\:border-0 {
-    &::file-selector-button {
-      border-style: var(--tw-border-style);
-      border-width: 0px;
-    }
-  }
-  .file\:bg-transparent {
-    &::file-selector-button {
-      background-color: transparent;
-    }
-  }
-  .file\:text-sm {
-    &::file-selector-button {
-      font-size: var(--text-sm);
-      line-height: var(--tw-leading, var(--text-sm--line-height));
-    }
-  }
-  .file\:font-medium {
-    &::file-selector-button {
-      --tw-font-weight: var(--font-weight-medium);
-      font-weight: var(--font-weight-medium);
-    }
-  }
   .placeholder\:text-slate-500 {
     &::placeholder {
       color: var(--color-slate-500);
@@ -1798,6 +1741,13 @@
     &:hover {
       @media (hover: hover) {
         text-decoration-line: underline;
+      }
+    }
+  }
+  .hover\:opacity-90 {
+    &:hover {
+      @media (hover: hover) {
+        opacity: 90%;
       }
     }
   }
@@ -1942,6 +1892,16 @@
       margin-inline: calc(var(--spacing) * 0);
     }
   }
+  .sm\:hidden {
+    @media (width >= 40rem) {
+      display: none;
+    }
+  }
+  .sm\:inline {
+    @media (width >= 40rem) {
+      display: inline;
+    }
+  }
   .sm\:inline-block {
     @media (width >= 40rem) {
       display: inline-block;
@@ -1980,6 +1940,11 @@
   .sm\:grid-cols-2 {
     @media (width >= 40rem) {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  .sm\:grid-cols-\[1fr_auto_auto_auto_auto\] {
+    @media (width >= 40rem) {
+      grid-template-columns: 1fr auto auto auto auto;
     }
   }
   .sm\:grid-cols-\[auto\,1fr\] {
@@ -2469,6 +2434,46 @@ html.theme-transition, html.theme-transition * {
 .reader-shell canvas {
   transform: none !important;
 }
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+  select,
+  input[type="search"],
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  textarea {
+    background-color: rgb(var(--card));
+    color: rgb(var(--foreground));
+    border-color: rgb(var(--border));
+  }
+  option {
+    background-color: rgb(var(--popover));
+    color: rgb(var(--popover-foreground));
+  }
+  html.dark option {
+    background-color: rgb(var(--popover));
+    color: rgb(var(--popover-foreground));
+    -webkit-text-fill-color: rgb(var(--popover-foreground));
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--muted-foreground));
+    opacity: 1;
+  }
+  select:focus,
+  input:focus,
+  textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--ring), 0.35);
+    border-color: rgb(var(--ring));
+  }
+}
+.reader-shell canvas {
+  transform: none !important;
+}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
@@ -2516,6 +2521,18 @@ html.theme-transition, html.theme-transition * {
   inherits: false;
 }
 @property --tw-skew-y {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-pan-x {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-pan-y {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-pinch-zoom {
   syntax: "*";
   inherits: false;
 }
@@ -2770,6 +2787,9 @@ html.theme-transition, html.theme-transition * {
       --tw-rotate-z: initial;
       --tw-skew-x: initial;
       --tw-skew-y: initial;
+      --tw-pan-x: initial;
+      --tw-pan-y: initial;
+      --tw-pinch-zoom: initial;
       --tw-space-y-reverse: 0;
       --tw-border-style: solid;
       --tw-gradient-position: initial;
@@ -2825,6 +2845,7 @@ html.theme-transition, html.theme-transition * {
     }
   }
 }
+
 /*!****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
   !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[2].use[1]!./node_modules/next/dist/build/webpack/loaders/next-font-loader/index.js??ruleSet[1].rules[14].oneOf[2].use[2]!./node_modules/next/font/google/target.css?{"path":"src\\app\\layout.tsx","import":"Roboto","arguments":[{"subsets":["latin"],"weight":["300","400","500","700"],"display":"swap"}],"variableName":"roboto"} ***!
   \****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/

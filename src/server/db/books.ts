@@ -1,7 +1,6 @@
 // src/server/db/books.ts
 
 import { prisma } from '../prisma';
-import { Prisma, ReadingStatus as DbReadingStatus } from '@prisma/client';
 import type {
   BookDTO,
   BookCreateInput,
@@ -10,31 +9,76 @@ import type {
   ReadingStatus,
 } from './types';
 
-/* --------------------------------------------------------------------------
- * Helper de "case-insensitive" compatível com versões onde Prisma.QueryMode
- * não está exposto no namespace. Usamos o literal 'insensitive' (as any).
- *
- * Ex.: { title: ci('dom') } => { title: { contains: 'dom', mode: 'insensitive' } }
- * -------------------------------------------------------------------------- */
-const ci = (s: string) =>
-  ({ contains: s, mode: 'insensitive' as any } as const);
+/* ============================================================================
+ * Tipos locais (sem depender de tipos do Prisma)
+ * ========================================================================== */
 
-/* --------------------------------------------------------------------------
- * Conversões utilitárias
- * -------------------------------------------------------------------------- */
+/** Mesmo union do seu domínio/DB */
+type DbReadingStatus = ReadingStatus;
+
+/** Ordenação permitida na UI/API */
+type OrderBy = 'createdAt' | 'title' | 'author' | 'rating';
 type OrderDir = 'asc' | 'desc';
 
-const asOrderDir = (v: any): OrderDir => (v === 'asc' ? 'asc' : 'desc');
+/** Shape mínimo do que o Prisma retorna quando include: { genre: true } */
+interface BookRow {
+  id: number;
+  title: string;
+  author: string;
+  year: number | null;
+  pages: number;
+  rating: number | null;
+  synopsis: string | null;
+  cover: string | null;
+  fileUrl: string | null;
+  status: DbReadingStatus; // enum em string
+  currentPage: number;
+  isbn: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  genreId: number | null;
+  genre: { id: number; name: string } | null;
+}
 
-const asPositiveInt = (v: any, fallback: number) => {
+/** Resultado tipado para paginação */
+export type ListBooksResult = {
+  total: number;
+  page: number;
+  pageSize: number;
+  items: BookDTO[];
+};
+
+/* ============================================================================
+ * Helpers
+ * ========================================================================== */
+
+/** contains case-insensitive (shape aceito pelo Prisma em filtros) */
+const ci = (s: string) => ({ contains: s, mode: 'insensitive' as const });
+
+const asOrderDir = (v: unknown): OrderDir => (v === 'asc' ? 'asc' : 'desc');
+
+const asPositiveInt = (v: unknown, fallback: number): number => {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 };
 
-/* --------------------------------------------------------------------------
- * DTO (transforma o retorno do Prisma no shape que a UI usa)
- * -------------------------------------------------------------------------- */
-function toDTO(b: any): BookDTO {
+/** Garante enum válido de status (fallback para QUERO_LER) */
+const toDbStatus = (s: unknown): DbReadingStatus => {
+  const ok: readonly DbReadingStatus[] = [
+    'QUERO_LER',
+    'LENDO',
+    'LIDO',
+    'PAUSADO',
+    'ABANDONADO',
+  ] as const;
+  return ok.includes(s as DbReadingStatus)
+    ? (s as DbReadingStatus)
+    : 'QUERO_LER';
+};
+
+/** Converte a linha do DB para o DTO que a UI espera */
+function toDTO(b: BookRow): BookDTO {
   return {
     id: b.id,
     title: b.title,
@@ -45,7 +89,7 @@ function toDTO(b: any): BookDTO {
     synopsis: b.synopsis ?? null,
     cover: b.cover ?? null,
     fileUrl: b.fileUrl ?? null,
-    status: b.status as ReadingStatus, // garante o union do nosso domínio
+    status: b.status,
     currentPage: b.currentPage,
     isbn: b.isbn ?? null,
     notes: b.notes ?? null,
@@ -56,30 +100,19 @@ function toDTO(b: any): BookDTO {
   };
 }
 
-/* --------------------------------------------------------------------------
- * Tipos auxiliares de Prisma (para tipar filtros/orderBy)
- * -------------------------------------------------------------------------- */
-type BookWhere = Prisma.BookWhereInput;
-type BookOrder = Prisma.BookOrderByWithRelationInput;
-
-/* =============================================================================
- * LISTAGEM
- * =============================================================================
- * - Filtros: q (busca livre), status, genreId
- * - Paginação: page, pageSize
- * - Ordenação: orderBy ('createdAt' | 'title' | 'author' | 'rating'), orderDir
- * - Busca case-insensitive usando o helper `ci(...)`
- * - Tipagem explícita em `andFilters: Prisma.BookWhereInput[]` evita problemas
- *   com o `OR` e o narrowing de tipos do TS.
- * ===========================================================================*/
-export async function listBooks(opts: ListOptions = {}) {
+/* ============================================================================
+ * LISTAGEM com busca, ordenação e paginação
+ * ========================================================================== */
+export async function listBooks(
+  opts: ListOptions = {}
+): Promise<ListBooksResult> {
   const {
     q,
     status,
     genreId,
     page: rawPage = 1,
     pageSize: rawPageSize = 12,
-    orderBy = 'createdAt',
+    orderBy = 'createdAt' as OrderBy,
     orderDir: rawOrderDir = 'desc',
   } = opts;
 
@@ -87,7 +120,7 @@ export async function listBooks(opts: ListOptions = {}) {
   const pageSize = asPositiveInt(rawPageSize, 12);
   const orderDir = asOrderDir(rawOrderDir);
 
-  const andFilters: BookWhere[] = [];
+  const andFilters: unknown[] = [];
 
   // 🔎 Busca livre (title/author/isbn) — case-insensitive
   if (q && q.trim().length > 0) {
@@ -97,73 +130,77 @@ export async function listBooks(opts: ListOptions = {}) {
     });
   }
 
-  // 🎯 Status (enum do Prisma)
-  if (status) {
-    andFilters.push({
-      status: status as DbReadingStatus,
-    });
-  }
+  // 🎯 Status (enum)
+  if (status) andFilters.push({ status: toDbStatus(status) });
 
-  // 🏷️ Gênero por FK
-  if (genreId) {
-    andFilters.push({ genreId });
-  }
+  // 🏷️ Gênero (FK)
+  if (genreId) andFilters.push({ genreId });
 
-  // where final (undefined se não houver filtro)
-  const where: BookWhere | undefined =
-    andFilters.length > 0 ? { AND: andFilters } : undefined;
+  const where = andFilters.length > 0 ? { AND: andFilters } : undefined;
 
   // 📚 Ordenação segura
-  let orderByClause: BookOrder;
-  switch (orderBy) {
-    case 'title':
-      orderByClause = { title: orderDir };
-      break;
-    case 'author':
-      orderByClause = { author: orderDir };
-      break;
-    case 'rating':
-      orderByClause = { rating: orderDir };
-      break;
-    default:
-      orderByClause = { createdAt: orderDir };
-  }
+  const orderByClause =
+    orderBy === 'title'
+      ? { title: orderDir }
+      : orderBy === 'author'
+      ? { author: orderDir }
+      : orderBy === 'rating'
+      ? { rating: orderDir }
+      : { createdAt: orderDir };
 
-  // Execução paralela (count + rows)
   const [total, rows] = await Promise.all([
-    prisma.book.count({ where }),
+    prisma.book.count({ where: where as any }),
     prisma.book.findMany({
-      where,
+      where: where as any,
       include: { genre: true },
-      orderBy: orderByClause,
+      orderBy: orderByClause as any,
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
   ]);
 
-  return {
-    total,
-    page,
-    pageSize,
-    items: rows.map(toDTO),
-  };
+  return { total, page, pageSize, items: (rows as BookRow[]).map(toDTO) };
 }
 
-/* =============================================================================
- * CRUD
- * ============================================================================= */
+/* ============================================================================
+ * Compatibilidade: getBooks simples (usado pela /api/books GET)
+ * ========================================================================== */
+export async function getBooks(): Promise<BookDTO[]> {
+  const rows = await prisma.book.findMany({
+    include: { genre: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  return (rows as BookRow[]).map(toDTO);
+}
 
-export async function getBook(id: number) {
+/* ============================================================================
+ * CRUD
+ * ========================================================================== */
+export async function getBook(id: number): Promise<BookDTO | null> {
   const row = await prisma.book.findUnique({
     where: { id },
     include: { genre: true },
   });
-  return row ? toDTO(row) : null;
+  return row ? toDTO(row as BookRow) : null;
 }
 
-/** Criação — aplica defaults coerentes com o schema */
-export async function createBook(input: BookCreateInput) {
-  const data: Prisma.BookCreateArgs['data'] = {
+/**
+ * Criação — aceita `genre` (nome) OU `genreId`.
+ * Não usamos tipos do Prisma; montamos o objeto de dados de forma segura.
+ */
+export async function createBook(
+  input: BookCreateInput & { genre?: string; genreId?: number }
+): Promise<BookDTO> {
+  // Resolve gênero por nome ou usa o id se vier direto
+  let resolvedGenreId: number | null = null;
+  if (typeof input.genre === 'string' && input.genre.trim().length > 0) {
+    resolvedGenreId = await upsertGenreByName(input.genre);
+  } else if (typeof input.genreId === 'number') {
+    resolvedGenreId = input.genreId;
+  }
+
+  // Construímos o `data` como objeto literal (sem mutação) para o TS inferir corretamente
+  const data = {
     title: input.title,
     author: input.author,
     year: input.year ?? null,
@@ -172,91 +209,93 @@ export async function createBook(input: BookCreateInput) {
     synopsis: input.synopsis ?? null,
     cover: input.cover ?? null,
     fileUrl: input.fileUrl ?? null,
-    status: (input.status ?? 'QUERO_LER') as DbReadingStatus, // default seguro
+    status: toDbStatus(input.status ?? 'QUERO_LER'),
     currentPage: input.currentPage ?? 0,
     isbn: input.isbn ?? null,
     notes: input.notes ?? null,
-    ...(input.genreId ? { genre: { connect: { id: input.genreId } } } : {}),
+    ...(resolvedGenreId ? { genre: { connect: { id: resolvedGenreId } } } : {}),
   };
 
   const created = await prisma.book.create({
-    data,
+    data: data as any,
     include: { genre: true },
   });
-  return toDTO(created);
+  return toDTO(created as BookRow);
 }
 
-/** Atualização — só envia campos presentes no patch */
-export async function updateBook(id: number, input: BookUpdateInput) {
-  const data: Prisma.BookUpdateArgs['data'] = {};
+/**
+ * Atualização — aplica somente campos presentes; controla (des)conexão do gênero por `genreId`.
+ */
+export async function updateBook(
+  id: number,
+  input: BookUpdateInput & { genreId?: number | null }
+): Promise<BookDTO> {
+  // Usamos spreads condicionais para inferir corretamente o shape
+  const data = {
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.author !== undefined ? { author: input.author } : {}),
+    ...(input.year !== undefined ? { year: input.year } : {}),
+    ...(input.pages !== undefined ? { pages: input.pages } : {}),
+    ...(input.rating !== undefined ? { rating: input.rating } : {}),
+    ...(input.synopsis !== undefined ? { synopsis: input.synopsis } : {}),
+    ...(input.cover !== undefined ? { cover: input.cover } : {}),
+    ...(input.fileUrl !== undefined ? { fileUrl: input.fileUrl } : {}),
+    ...(input.status !== undefined ? { status: toDbStatus(input.status) } : {}),
+    ...(input.currentPage !== undefined
+      ? { currentPage: input.currentPage }
+      : {}),
+    ...(input.isbn !== undefined ? { isbn: input.isbn } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    ...(input.genreId !== undefined
+      ? input.genreId === null
+        ? { genre: { disconnect: true } }
+        : { genre: { connect: { id: input.genreId } } }
+      : {}),
+  };
 
-  if (input.title !== undefined) data.title = input.title;
-  if (input.author !== undefined) data.author = input.author;
-  if (input.year !== undefined) data.year = input.year;
-  if (input.pages !== undefined) data.pages = input.pages;
-  if (input.rating !== undefined) data.rating = input.rating;
-  if (input.synopsis !== undefined) data.synopsis = input.synopsis;
-  if (input.cover !== undefined) data.cover = input.cover;
-  if (input.fileUrl !== undefined) data.fileUrl = input.fileUrl;
-
-  if (input.status !== undefined) {
-    data.status = input.status as DbReadingStatus;
-  }
-
-  if (input.currentPage !== undefined) data.currentPage = input.currentPage;
-  if (input.isbn !== undefined) data.isbn = input.isbn;
-  if (input.notes !== undefined) data.notes = input.notes;
-
-  // Conecta/desconecta gênero
-  if (input.genreId !== undefined) {
-    data.genre = input.genreId
-      ? { connect: { id: input.genreId } }
-      : { disconnect: true };
-  }
-
-  // Atualiza
   const updated = await prisma.book.update({
     where: { id },
-    data,
+    data: data as any,
     include: { genre: true },
   });
 
-  // Auto-finalização (se currentPage >= pages - 1, marca como LIDO)
+  // Auto-finalização: se currentPage >= pages - 1, marca como LIDO
   if (
     input.currentPage !== undefined &&
-    typeof updated.pages === 'number' &&
-    updated.pages > 0 &&
-    input.currentPage >= updated.pages - 1 &&
-    updated.status !== 'LIDO'
+    typeof (updated as BookRow).pages === 'number' &&
+    (updated as BookRow).pages > 0 &&
+    input.currentPage >= (updated as BookRow).pages - 1 &&
+    (updated as BookRow).status !== 'LIDO'
   ) {
     const finalized = await prisma.book.update({
       where: { id },
-      data: { status: 'LIDO' },
+      data: { status: 'LIDO' } as any,
       include: { genre: true },
     });
-    return toDTO(finalized);
+    return toDTO(finalized as BookRow);
   }
 
-  return toDTO(updated);
+  return toDTO(updated as BookRow);
 }
 
-export async function deleteBook(id: number) {
+export async function deleteBook(id: number): Promise<BookDTO> {
   const deleted = await prisma.book.delete({
     where: { id },
     include: { genre: true },
   });
-  return toDTO(deleted);
+  return toDTO(deleted as BookRow);
 }
 
-/* =============================================================================
+/* ============================================================================
  * GÊNEROS
- * ============================================================================= */
-
-export async function listGenres() {
+ * ========================================================================== */
+export async function listGenres(): Promise<
+  Array<{ id: number; name: string; createdAt: Date }>
+> {
   return prisma.genre.findMany({ orderBy: { name: 'asc' } });
 }
 
-export async function ensureDefaultGenres() {
+export async function ensureDefaultGenres(): Promise<void> {
   const defaults = [
     'Ficção',
     'Não-ficção',
@@ -276,7 +315,9 @@ export async function ensureDefaultGenres() {
 }
 
 /** Cria (ou pega) um gênero pelo nome e retorna o id; string vazia => null */
-export async function upsertGenreByName(name?: string | null) {
+export async function upsertGenreByName(
+  name?: string | null
+): Promise<number | null> {
   const n = name?.trim();
   if (!n) return null;
   const g = await prisma.genre.upsert({

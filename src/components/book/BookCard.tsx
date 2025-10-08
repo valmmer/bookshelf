@@ -1,16 +1,77 @@
 // src/components/book/BookCard.tsx
 'use client';
 
-import type { ReadingStatus } from '@/server/db/types';
 import Link from 'next/link';
+import type { ReadingStatus } from '@/server/db/types';
 import { Progress } from '@/components/ui/progress';
 import Badge from '@/components/ui/badge';
-import BookActions from './BookActions';
 
 function cn(...a: Array<string | undefined | null | false>) {
   return a.filter(Boolean).join(' ');
 }
 
+/* ----------------------------- helpers ------------------------------ */
+function statusBadge(status?: ReadingStatus | null) {
+  if (!status) {
+    return <Badge className="bg-muted text-foreground">Indefinido</Badge>;
+  }
+  const map: Record<ReadingStatus, { label: string; className: string }> = {
+    QUERO_LER: { label: 'Pendente', className: 'bg-gray-200 text-gray-800' },
+    LENDO: { label: 'Lendo', className: 'bg-blue-200 text-blue-800' },
+    LIDO: { label: 'Lido', className: 'bg-green-200 text-green-800' },
+    PAUSADO: { label: 'Pausado', className: 'bg-yellow-200 text-yellow-800' },
+    ABANDONADO: { label: 'Abandonado', className: 'bg-red-200 text-red-800' },
+  };
+  const { label, className } = map[status];
+  return <Badge className={className}>{label}</Badge>;
+}
+
+function statusLabel(status?: ReadingStatus | null) {
+  if (!status) return 'Indefinido';
+  switch (status) {
+    case 'QUERO_LER':
+      return 'Quero ler';
+    case 'LENDO':
+      return 'Lendo';
+    case 'LIDO':
+      return 'Lido';
+    case 'PAUSADO':
+      return 'Pausado';
+    case 'ABANDONADO':
+      return 'Abandonado';
+  }
+}
+
+/** Estrelinhas simples (0..5) */
+function Stars({ value = 0 }: { value?: number | null }) {
+  const v = Math.max(0, Math.min(5, Math.round(value ?? 0)));
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1"
+      aria-label={`Avaliação: ${v} de 5`}
+    >
+      {Array.from({ length: 5 }, (_, i) => (
+        <svg
+          key={i}
+          viewBox="0 0 24 24"
+          className={cn(
+            'h-4 w-4',
+            i < v
+              ? 'fill-yellow-400 stroke-yellow-500'
+              : 'fill-transparent stroke-yellow-500'
+          )}
+        >
+          <path
+            strokeWidth="1.5"
+            d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+          />
+        </svg>
+      ))}
+    </div>
+  );
+}
+
+/* ----------------------------- props ------------------------------ */
 type Props = {
   id: number;
   title: string;
@@ -22,28 +83,13 @@ type Props = {
   genre?: { name: string } | null;
   cover?: string | null;
   fileUrl?: string | null;
-  rating?: number | null; // 👈 vem do DB
+  rating?: number | null;
 
   className?: string;
   as?: 'li' | 'div' | 'article';
 };
 
-function statusBadge(status?: ReadingStatus | null) {
-  if (!status)
-    return <Badge className="bg-muted text-foreground">Indefinido</Badge>;
-
-  const map: Record<ReadingStatus, { label: string; className: string }> = {
-    QUERO_LER: { label: 'Pendente', className: 'bg-gray-200 text-gray-800' },
-    LENDO: { label: 'Lendo', className: 'bg-blue-200 text-blue-800' },
-    LIDO: { label: 'Lido', className: 'bg-green-200 text-green-800' },
-    PAUSADO: { label: 'Pausado', className: 'bg-yellow-200 text-yellow-800' },
-    ABANDONADO: { label: 'Abandonado', className: 'bg-red-200 text-red-800' },
-  };
-
-  const { label, className } = map[status];
-  return <Badge className={className}>{label}</Badge>;
-}
-
+/* --------------------------- componente ---------------------------- */
 export default function BookCard({
   id,
   title,
@@ -55,7 +101,7 @@ export default function BookCard({
   genre,
   cover,
   fileUrl,
-  rating, // 👈 receber
+  rating,
   className,
   as = 'li',
 }: Props) {
@@ -67,16 +113,17 @@ export default function BookCard({
   const Root: any = as;
   const rootProps = as === 'li' ? {} : { role: 'listitem' };
 
+  const canOpen = !!(fileUrl && fileUrl.trim().length > 0);
+
   return (
     <Root
       {...rootProps}
       className={cn(
-        // 👇 limita o tamanho do card (não importa o quão largo esteja o grid)
-        'group rounded-2xl border bg-card p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md max-w-[240px] sm:max-w-[260px] mx-auto',
+        'group mx-auto max-w-[240px] sm:max-w-[260px] rounded-2xl border bg-[rgb(var(--card))] p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md',
         className
       )}
     >
-      {/* Capa — usamos um contêiner de tamanho fixo responsivo para evitar blur/estouro */}
+      {/* Capa */}
       <Link href={`/books/${id}`} className="block">
         <div className="mx-auto h-56 w-40 sm:h-64 sm:w-48 lg:h-72 lg:w-52 overflow-hidden rounded-lg border bg-muted/20">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -91,7 +138,7 @@ export default function BookCard({
       </Link>
 
       {/* Título + autor */}
-      <h3 className="mt-3 line-clamp-2 text-sm font-semibold">
+      <h3 className="mt-3 break-anywhere text-sm font-semibold">
         {title ?? 'Sem título'}
       </h3>
       <p className="text-xs text-muted-foreground">
@@ -105,7 +152,7 @@ export default function BookCard({
         {genre?.name ? <span>· {genre.name}</span> : null}
       </div>
 
-      {/* Status */}
+      {/* Status (badge) */}
       <div className="mt-2">{statusBadge(status)}</div>
 
       {/* Progresso */}
@@ -116,14 +163,56 @@ export default function BookCard({
         </div>
       </div>
 
-      {/* Ações — agora mandamos a nota vinda do DB */}
-      <div className="mt-3 flex justify-end">
-        <BookActions
-          id={id}
-          fileUrl={fileUrl}
-          currentStatus={status ?? 'QUERO_LER'}
-          currentRating={typeof rating === 'number' ? rating : null} // 👈 aqui
-        />
+      {/* Ações — grid responsivo (NÃO “escapa” no mobile) */}
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {/* Abrir */}
+        <Link
+          href={canOpen ? (fileUrl as string) : '#'}
+          target={canOpen ? '_blank' : undefined}
+          rel={canOpen ? 'noreferrer' : undefined}
+          aria-disabled={!canOpen}
+          className={cn(
+            'inline-flex w-full min-w-0 items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm hover:bg-muted',
+            !canOpen && 'pointer-events-none opacity-50'
+          )}
+        >
+          <span className="truncate">Abrir</span>
+        </Link>
+
+        {/* Editar */}
+        <Link
+          href={`/books/${id}/edit`}
+          className="inline-flex w-full min-w-0 items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm hover:bg-muted"
+        >
+          <span className="truncate">Editar</span>
+        </Link>
+
+        {/* Ler — no mobile ocupa as duas colunas para não “espirrar” */}
+        <Link
+          href={`/books/${id}/read`}
+          className="col-span-2 inline-flex w-full min-w-0 items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm hover:bg-muted sm:col-span-1"
+        >
+          <span className="truncate">Ler</span>
+        </Link>
+
+        {/* Excluir */}
+        <Link
+          href={`/books/${id}/delete`}
+          className="inline-flex w-full min-w-0 items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm hover:bg-muted"
+        >
+          <span className="truncate">Excluir</span>
+        </Link>
+      </div>
+
+      {/* Status + Avaliação (empilhado no mobile, lado a lado no desktop) */}
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="truncate">Status: {statusLabel(status)}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="shrink-0">Avaliação</span>
+          <Stars value={rating ?? 0} />
+        </div>
       </div>
     </Root>
   );

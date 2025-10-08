@@ -1,242 +1,345 @@
-# 📚 BookShelf — sua estante digital (Next.js 15 + React 19 + Tailwind 4)
+# 📚 Bookshelf — sua estante digital
 
-Aplicação moderna para gerenciar sua biblioteca pessoal: cadastre livros, envie PDF/capa, acompanhe o progresso de leitura e leia PDFs no próprio navegador com um leitor acessível e performático.
-
-> **Stack**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS v4, Radix/shadcn (Progress/Dialog), React Hook Form + Zod, react‑pdf, framer‑motion.
-
----
-
-## ✨ Principais recursos
-
-- **Dashboard** com KPIs (Total, Lendo, Lidos, Páginas lidas) e cards de progresso
-- **Biblioteca** com busca, filtro por status/gênero, ordenação e “com PDF”
-- **CRUD de livros** com formulários validados por **Zod** (RHF)
-- **Uploads locais** (dev): API `/api/upload` salva PDFs em `public/ebooks` e capas em `public/covers`
-- **Leitor de PDF** com:
-  - tema (Paper/Creme/Sépia/Escuro/Alto Contraste)
-  - zoom, navegação por teclado (← → Home End, + -)
-  - salva a **página atual** no store/localStorage (retoma de onde parou)
-- **Store global** própria (`useBooks`) com persistência em `localStorage`
-- **Acessibilidade**: foco/aria labels, cores contrastadas, feedback visual, toasts
-- **UI/UX**: skeletons, animações sutis, mensagens acolhedoras, botões de ação com loading
+App para gerenciar sua biblioteca pessoal: cadastre livros, envie o PDF e a capa, leia no navegador (com progresso salvo), filtre e ordene sua coleção.  
+**Stack:** Next.js 15 (App Router) • React 19 • TypeScript • Tailwind v4 • Prisma • PostgreSQL (Railway) • Supabase Storage • pdfjs-dist
 
 ---
 
-## 🏗️ Estrutura do projeto (simplificada)
+## ✨ Funcionalidades
+
+- CRUD completo de livros (título, autor, ano, gênero, páginas, rating, notas, ISBN etc.)
+- Upload de **PDF** e **capa** (armazenados no **Supabase Storage**)
+- Leitor de PDF integrado (zoom, navegação, progresso salvo automaticamente)
+- Biblioteca com **busca**, **filtros por status** e **ordenação**
+- Tema **claro/escuro** e estilos consistentes (tokens em `globals.css`)
+- API REST básica (`/api/books`, `/api/upload`, `/api/ping`)
+- Server Actions (Next) para criação/edição/remoção, com revalidação
+- Tipagem forte com Zod/TypeScript (validações no server e no client)
+
+---
+
+## 🗂️ Estrutura de pastas
 
 ```
 src/
   app/
-    layout.tsx              # layout raiz (Header/Footer/Providers)
-    page.tsx                # dashboard (home)
-    library/page.tsx        # listagem + filtros
+    api/
+      books/route.ts          # GET/POST livros (listagem/criação)
+      ping/route.ts           # health/env check (Supabase vars)
+      upload/route.ts         # upload PDF/capa -> Supabase Storage
     books/
-      new/page.tsx          # criar livro (upload PDF obrigatório)
-      [id]/page.tsx         # detalhes do livro
-      [id]/edit/page.tsx    # editar (upload opcional / remover capa)
-      [id]/read/page.tsx    # leitor de PDF
-    api/upload/route.ts     # salva arquivos localmente (dev)
+      [id]/page.tsx           # detalhes do livro
+      [id]/read/              # leitor de PDF
+        page.tsx
+        ReaderClient.tsx
+      [id]/edit/page.tsx      # edição
+      [id]/delete/page.tsx    # confirmação de exclusão
+      new/page.tsx            # formulário de criação
+    library/page.tsx          # listagem com busca/filtros/ordenação
+    page.tsx                  # home (atalhos)
   components/
     book/BookCard.tsx
-    book/CoverPreview.tsx
-    book/RatingStars.tsx
-    reader/PDFReader.tsx
-    ui/ConfirmDialog.tsx
-    ui/ToastProvider.tsx
-    navigation/Breadcrumbs.tsx
-    dashboard/KpiCard.tsx
-    skeleton/Skeleton.tsx
-  store/books.tsx           # contexto + reducer + persistência
-  types/book.ts             # tipos e utils de domínio (normalize/sanitize)
-  features/books/schema.ts  # schema Zod dos formulários
-  lib/cn.ts                 # utilitário clsx/twMerge (se aplica)
+    book/BookForm.tsx
+    ui/*                      # botões, toasts, etc.
+  features/
+    books/schema.ts           # Zod (form + server)
+  server/
+    db/
+      books.ts                # camada de acesso (Prisma)
+      prisma.ts               # cliente Prisma
+      types.ts                # DTOs e tipos de domínio
+    supabase.ts               # client admin (server-only)
+prisma/
+  schema.prisma
 public/
-  ebooks/                   # PDFs salvos localmente (dev)
-  covers/                   # imagens de capa (dev)
+  pdf.worker.min.mjs          # worker copiado em build (ver scripts)
+  covers/*                    # (apenas dev)
+  ebooks/*                    # (apenas dev)
+scripts/
+  copy-pdf-worker.mjs         # copia o worker do pdfjs-dist para /public
 ```
 
 ---
 
-## 🚀 Começando
+## 🧰 Modelagem (Prisma/Postgres)
 
-### 1) Pré-requisitos
+```prisma
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
-- **Node.js 18+**
-- **pnpm** (recomendado) ou npm/yarn
+enum ReadingStatus {
+  QUERO_LER
+  LENDO
+  LIDO
+  PAUSADO
+  ABANDONADO
+}
 
-### 2) Instalar dependências
+model Genre {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  books     Book[]
+  @@index([name])
+}
 
-```bash
-pnpm i
-# ou
-npm i
+model Book {
+  id          Int           @id @default(autoincrement())
+  title       String
+  author      String
+  year        Int?
+  pages       Int           @default(0)
+  rating      Int?
+  synopsis    String?
+  cover       String?
+  fileUrl     String?
+  status      ReadingStatus @default(QUERO_LER)
+  currentPage Int           @default(0)       // 0-based
+  isbn        String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  genreId Int?
+  genre   Genre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt], map: "idx_book_createdAt")
+  @@index([status],    map: "idx_book_status")
+  @@index([author],    map: "idx_book_author")
+  @@index([title],     map: "idx_book_title")
+  @@index([genreId],   map: "idx_book_genreId")
+}
 ```
 
-### 3) Rodar em desenvolvimento
+---
 
+## 🔌 Rotas de API
+
+- `GET  /api/books` — lista paginada (query: `status`, `orderBy`, `orderDir`, `page`, `pageSize`)
+- `POST /api/books` — cria livro (sanitiza tipos; resolve `genre` por nome)
+- `POST /api/upload` — recebe `FormData` (`pdf` obrigatório, `cover` opcional), salva no **Supabase Storage** e retorna URLs públicas
+- `GET  /api/ping` — health-check e verificação de envs do Supabase
+
+> Exclusão/edição usam **Server Actions** (mais simples e com revalidação do cache do Next).
+
+---
+
+## 🔐 Variáveis de ambiente
+
+| Nome                       | Onde usar     | Exemplo / Observações                                                                 |
+|---------------------------|---------------|----------------------------------------------------------------------------------------|
+| `DATABASE_URL`            | Server        | `postgresql://…@postgres.railway.internal:5432/railway` (Private) ou `…proxy…?sslmode=require` |
+| `NEXT_PUBLIC_SUPABASE_URL`| Client/Server | `https://SEU-PROJETO.supabase.co`                                                      |
+| `SUPABASE_SERVICE_ROLE`   | **Server**    | **NUNCA** expor no client. Use a **Service Role Key** (painel Supabase → Project Settings → API). |
+| `SUPABASE_BUCKET`         | Server        | `uploads` (crie esse bucket e deixe **public**)                                        |
+| `NIXPACKS_NODE_VERSION`   | Railway       | `20`                                                                                   |
+| `NEXT_DISABLE_ESLINT`     | Build         | `1` (opcional)                                                                         |
+| `NEXT_DISABLE_TYPECHECK`  | Build         | `1` (opcional)                                                                         |
+
+> No Railway, se o seu serviço Node **está no mesmo projeto** que o Postgres, crie a env `DATABASE_URL` com o valor:  
+> `\${{ Postgres.DATABASE_URL }}` (Private Network).  
+> Se for acessar **fora do Railway** (ex.: rodando local), use a **Public** (`…proxy…`) e adicione `?sslmode=require`.
+
+---
+
+## ▶️ Rodando local
+
+1) **Instalar dependências**
 ```bash
-pnpm dev
-# ou
+npm install
+```
+
+2) **Configurar `.env`**
+```env
+DATABASE_URL="postgresql://usuario:senha@host:port/db?sslmode=require"
+NEXT_PUBLIC_SUPABASE_URL="https://SEU-PROJETO.supabase.co"
+SUPABASE_SERVICE_ROLE="eyJhbGciOiJI..."  # server-only
+SUPABASE_BUCKET="uploads"
+```
+
+3) **Banco (Prisma)**
+```bash
+npx prisma validate
+npx prisma migrate dev --name init
+npx prisma generate
+```
+
+4) **Dev**
+```bash
 npm run dev
+# http://localhost:3000
 ```
 
-Acesse em `http://localhost:3000`.
+---
 
-> **Windows/PowerShell**: se aparecer “`next` não é reconhecido”, reinstale dependências (`npm i`) na raiz do projeto e rode o script via `npm run dev` (ele chama o bin do `node_modules/.bin/next`).
+## 🚀 Deploy no Railway
+
+1) **Serviço Postgres**
+   - Adicione um Postgres no mesmo projeto.
+
+2) **Serviço Node (Bookshelf)**
+   - **Build Command:** `prisma generate && node scripts/copy-pdf-worker.mjs && next build`
+   - **Start Command:** `next start -p $PORT`  
+     (o script `prestart` roda `prisma migrate deploy` antes de subir)
+   - **Env vars do Node:**
+     - `DATABASE_URL` → `\${{ Postgres.DATABASE_URL }}`
+     - `NEXT_PUBLIC_SUPABASE_URL`
+     - `SUPABASE_SERVICE_ROLE`
+     - `SUPABASE_BUCKET=uploads`
+     - `NIXPACKS_NODE_VERSION=20`
+
+3) **Supabase**
+   - Crie o **bucket** público `uploads`.
+   - (Opcional) Limite de arquivo no **free** é ~50 MB — PDFs maiores exigem upgrade.
+
+---
+
+## 🧾 Uploads (Supabase)
+
+- Rota: `POST /api/upload`  
+  Envie `FormData` com:
+  - `pdf` (obrigatório, `application/pdf`)
+  - `cover` (opcional, `image/*`)
+
+- O endpoint valida tipo/tamanho e grava em:
+  - `uploads/ebooks/...pdf`
+  - `uploads/covers/...jpg|png|webp`
+- Retorna `{ ok: true, pdfUrl, coverUrl }` (URLs públicas do Supabase)  
+- O **formulário** de novo livro já chama essa rota antes de criar o registro no banco.
+
+---
+
+## 📖 Leitor de PDF
+
+- Usa `pdfjs-dist@4` com **worker local** em `/public/pdf.worker.min.mjs`.
+- **Importante:** copiar o worker no build.
+
+**scripts/copy-pdf-worker.mjs**
+```js
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+import { copyFileSync, mkdirSync } from 'fs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const from = resolve(__dirname, '../node_modules/pdfjs-dist/build/pdf.worker.min.mjs');
+const to   = resolve(__dirname, '../public/pdf.worker.min.mjs');
+mkdirSync(resolve(__dirname, '../public'), { recursive: true });
+copyFileSync(from, to);
+console.log('✔ pdf.worker.min.mjs copiado para /public');
+```
+
+**package.json (trecho)**
+```json
+{
+  "scripts": {
+    "build": "prisma generate && node scripts/copy-pdf-worker.mjs && next build",
+    "prestart": "prisma migrate deploy",
+    "start": "next start -p $PORT"
+  }
+}
+```
+
+**ReaderClient.tsx (trecho)**
+```ts
+const pdfjsLib = await import('pdfjs-dist/build/pdf');
+(pdfjsLib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+```
+
+> O leitor salva automaticamente o **progresso** (`currentPage`, 0-based) via `updateBookAction`.
+
+---
+
+## 🖼️ Next Image (Supabase)
+
+No `next.config.js`, libere seu domínio do Supabase:
+
+```js
+/** @type {import('next').NextConfig} */
+module.exports = {
+  output: 'standalone',
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'm.media-amazon.com' },
+      { protocol: 'http', hostname: 'localhost' },
+      { protocol: 'https', hostname: 'snzsacdpnazpmmnznuyh.supabase.co' } // seu host
+    ],
+  },
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
+};
+```
+
+---
+
+## 🎨 Tema & Acessibilidade
+
+- **Tokens** definidos em `globals.css` (claro/escuro).
+- Nos formulários/filtros use sempre classes que **forçam contraste**:
+  - `bg-background text-foreground`
+  - `placeholder:text-muted-foreground`
+  - `border`
+- Ex.: `<select className="rounded-md border bg-background text-foreground px-2 py-2 text-sm" />`.
 
 ---
 
 ## 🧪 Scripts úteis
 
-| Script  | Descrição         |
-| ------- | ----------------- |
-| `dev`   | Next dev          |
-| `build` | Build de produção |
-| `start` | Servir build      |
-| `lint`  | Eslint            |
-
----
-
-## ⚙️ Configurações importantes
-
-### `next.config.js` (imagens locais com `next/image`)
-
-```js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  images: {
-    remotePatterns: [
-      { protocol: 'http', hostname: 'localhost' },
-      { protocol: 'https', hostname: '**' },
-    ],
-    // ou: unoptimized: true
-  },
-};
-export default nextConfig;
+```bash
+npm run dev                # desenvolvimento
+npm run build              # gera pdf.worker + build Next
+npm start                  # inicia (Railway usa $PORT)
+npm run migrate:deploy     # aplica migrações em produção
+npm run db:push            # push do schema (dev)
+npm run db:migrate         # migrate dev (gera arquivos)
+npm run prisma:generate    # client do Prisma
+npm run prisma:studio      # GUI do Prisma
 ```
-
-### `tsconfig.json`
-
-- `moduleResolution: "bundler"`
-- `baseUrl: "src"` e `paths: { "@/*": ["./*"] }`
-
-### `tailwind`
-
-- Tailwind v4 (postcss) já configurado, classes utilitárias em todo o app.
-
----
-
-## 📦 Upload local (dev)
-
-A rota `POST /api/upload` aceita `multipart/form-data` com campos:
-
-- `pdf` **(obrigatório na criação)** — salvo em `public/ebooks`
-- `cover` _(opcional)_ — salva em `public/covers`
-
-Retorno:
-
-```json
-{
-  "id": "uuid",
-  "pdfUrl": "/ebooks/<file>.pdf",
-  "coverUrl": "/covers/<file>.jpg"
-}
-```
-
-> **Produção (Vercel)**: o filesystem é efêmero. Para persistir, troque para um provedor de storage (Vercel Blob, S3, etc.) e ajuste o `PDFReader`/URLs.
-
----
-
-## 🧠 State & Tipos
-
-- `src/store/books.tsx`: reducer (`ADD/UPDATE/DELETE/HYDRATE`), normalização de status por `currentPage/pages` e persistência no `localStorage`.
-- `src/types/book.ts`: `Book`, `ReadingStatus`, `normalizeBook`, `sanitizeBook`, `normalizeFileUrl`, _guards_ e utilitários.
-- O store _clampa_ `currentPage ≤ pages` e ajusta `status` automaticamente (`LENDO`/`LIDO`).
-
----
-
-## 📝 Formulários (RHF + Zod)
-
-- `features/books/schema.ts` define `bookFormSchema` e `BookFormValues`.
-- Padrão usado no **new/edit** para evitar conflito com `SubmitHandler`:
-  - `useForm<BookFormValues>({ resolver: zodResolver(schema) as Resolver<BookFormValues> })`
-  - `const onValid = (values: BookFormValues) => { ... }`
-  - `const onSubmit: FormEventHandler<HTMLFormElement> = (e) => { e.preventDefault(); void (form.handleSubmit as (cb: (d: BookFormValues) => unknown) => any)(onValid)(e); }`
-
-Campos com `valueAsNumber` nos inputs numéricos para coerção segura.
-
----
-
-## 📖 Leitor de PDF (`react-pdf`)
-
-- Carregado só no cliente via `dynamic(..., { ssr: false })`
-- Worker local em `/public/pdf.worker.min.mjs`
-- Salva progresso por livro (`reading_progress_<id>`) e no store (`updateBook` debounced)
-- Teclas: **←/→**, **+/-**, **Home/End**
-- Temas guardados em `localStorage` (`reader_theme`)
-
-> **Dica**: para ocupar a tela sem sobrepor o rodapé, usamos `min-h-screen` no layout e na página de leitura um container `h-[calc(100vh-140px)]` (ajuste esse offset se seu Header/Footer mudar de altura).
-
----
-
-## ♿ Acessibilidade
-
-- Labels/aria nos botões/inputs, contraste em temas, “aria-busy” nos botões com loading.
-- Navegação por teclado no leitor e focos visíveis nos componentes clicáveis.
-- Mensagens claras nos estados vazios/erros.
-
----
-
-## 🚀 Performance & DX
-
-- `next/font` para fontes otimizadas
-- Suspense/skeletons em listas e no leitor
-- `useMemo`/`useCallback` nos cálculos de KPIs e filtros
-- Evitamos re-renders no store expondo apenas funções estáveis
 
 ---
 
 ## 🧯 Troubleshooting
 
-- **Imagem com `next/image` deu erro de hostname**: adicione `localhost` (ou use `unoptimized: true`) no `next.config.js`.
-- **“next não é reconhecido” no Windows**: rode `npm i` na raiz e use `npm run dev`.
-- **Footer sobre o leitor**: ajuste o `calc(100vh - XXXpx)` da página `read`, ou transforme o Footer em `sticky`/`static` conforme sua UI.
-- **Form mostra `NaN` no rating**: garanta `register('rating', { valueAsNumber: true })` + fallback `value={rating ?? 0}` no `RatingStars`.
+- **P1012 — `Environment variable not found: DATABASE_URL`**  
+  → Garanta `DATABASE_URL` no `.env` (local) ou no painel do Railway (service → Variables).
+
+- **P1001 — `Can't reach database server at postgres.railway.internal:5432` (local)**  
+  → A URL *Private Network* só funciona **dentro** do Railway.  
+  Para rodar local, use a **Public** (`…proxy…`) + `?sslmode=require`.
+
+- **`NS_ERROR_CORRUPTED_CONTENT` / `disallowed MIME type (text/html)` no `pdf.worker.min.mjs`**  
+  → O worker não foi copiado. Inclua o script `copy-pdf-worker.mjs` e rode antes do `next build`.
+
+- **`MissingPDFException` com URL duplicada**  
+  → Garante que `fileUrl` seja **uma URL válida** do Supabase (ex.: `https://…supabase.co/storage/v1/object/public/uploads/ebooks/…pdf`),  
+  e que o `ReaderClient` **não** prefixe novamente com `window.location.origin`.
+
+- **Uploads não aparecem em produção**  
+  → Em produção, **não grave em `public/*`**. Use a rota `/api/upload` (Supabase Storage).  
+  Verifique `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, `SUPABASE_BUCKET` e se o bucket está **public**.
+
+- **Arquivo grande**  
+  → Plano gratuito do Supabase limita ~**50 MB** por upload. PDFs maiores exigem upgrade.
 
 ---
 
-## 🗺️ Roadmap (sugestões)
+## 🗺️ Roadmap
 
-- Autenticação (NextAuth)
-- Sincronizar dados em um DB (Postgres/Prisma)
-- Upload em storage (Vercel Blob/S3)
-- Coleções, tags e metas de leitura
-- Importação por ISBN (Google Books API)
-- Notas destacáveis no PDF
+- Autenticação (NextAuth/Auth.js) para uploads privados
+- Busca full-text por título/autor (Prisma + Postgres `ILIKE`/`tsvector`)
+- Leitor: mini-mapa/miniaturas de páginas, rolagem contínua, modo duas páginas
 
 ---
 
-## 🤝 Contribuindo
+## 👤 Autor
 
-1. Faça um fork
-2. Crie um branch: `feat/minha-feature`
-3. Commit: `feat: descrição curta`
-4. Abra um PR
-
----
-
-## 👥 Participantes
-
-- Valmer Mariano
-- Cassia Deiro
-- Catarine Formiga
-- Paola Pontes
-- Samille Ervely
-
-> Quer adicionar cargo/contato de cada participante? Me passe os detalhes e eu atualizo aqui. 😉
+**Valmer Benedito Mariano**  
++ colaboradores: Cassia Deiro, Catarine Formiga, Paola Pontes, Samille Ervely
 
 ---
 
 ## 📄 Licença
 
-Este projeto é distribuído sob a licença MIT. Consulte `LICENSE` (opcional) para mais detalhes.
+MIT

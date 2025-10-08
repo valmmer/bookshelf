@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql" // ⇐ usamos Postgres no Railway
   url      = env("DATABASE_URL")
 }
 
@@ -21,31 +21,34 @@ model Genre {
   name      String   @unique
   createdAt DateTime @default(now())
 
-  books     Book[]
+  books Book[]
+
+  @@index([name])
 }
 
 model Book {
-  id          Int            @id @default(autoincrement())
+  id          Int           @id @default(autoincrement())
   title       String
   author      String
   year        Int?
-  pages       Int            @default(0)
+  pages       Int           @default(0)
   rating      Int?
-  synopsis    String?        // ← REMOVIDO @db.Text
+  synopsis    String?
   cover       String?
   fileUrl     String?
-  status      ReadingStatus  @default(QUERO_LER)
-  currentPage Int            @default(0)
+  status      ReadingStatus @default(QUERO_LER)
+  currentPage Int           @default(0)
   isbn        String?
-  notes       String?        // ← REMOVIDO @db.Text
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  genreId     Int?
-  genre       Genre?         @relation(fields: [genreId], references: [id])
+  genreId Int?
+  genre   Genre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
 
-  @@index([createdAt])
-  @@index([status])
-  @@index([author])
-  @@index([title])
+  @@index([createdAt], map: "idx_book_createdAt")
+  @@index([status], map: "idx_book_status")
+  @@index([author], map: "idx_book_author")
+  @@index([title], map: "idx_book_title")
+  @@index([genreId], map: "idx_book_genreId")
 }

@@ -1,26 +1,23 @@
 // src/app/api/upload/route.ts
 import { NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
 import { randomUUID } from 'crypto';
+import { supabaseAdmin, SUPABASE_BUCKET } from '@/server/supabase';
 
-export const runtime = 'nodejs'; // garante acesso ao fs local
-export const dynamic = 'force-dynamic'; // evita cache desse endpoint
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-/** Sanitiza o “corpo” do nome (sem caminho) */
+/* ----------------------------- helpers ----------------------------- */
 function safeBaseName(name: string) {
-  const base = path.basename(name || 'file');
-  return base
+  return (name || 'file')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '') // remove diacríticos
+    .replace(/[\u0300-\u036f]/g, '') // remove acentos
     .replace(/\s+/g, '-') // espaços -> hífen
-    .replace(/[^a-zA-Z0-9._-]/g, '') // remove chars perigosos
+    .replace(/[^a-zA-Z0-9._-]/g, '') // chars perigosos
     .slice(0, 80);
 }
 
-/** Extensão por MIME (não confia no nome original) */
-function extFromMime(mime: string, fallback = '.bin') {
-  const m = mime.toLowerCase();
+function extFromMime(mime: string | undefined, fallback = '.bin') {
+  const m = (mime || '').toLowerCase();
   if (m === 'application/pdf') return '.pdf';
   if (m === 'image/jpeg') return '.jpg';
   if (m === 'image/png') return '.png';
@@ -29,26 +26,27 @@ function extFromMime(mime: string, fallback = '.bin') {
   return fallback;
 }
 
-async function ensureDir(absPath: string) {
-  await fs.mkdir(absPath, { recursive: true });
-}
-
-/** Checagem simples de “assinatura mágica” de PDF */
+/** Checagem simples da assinatura “%PDF-” */
 function looksLikePdf(buf: Buffer) {
-  // %PDF- (0x25 0x50 0x44 0x46 0x2D)
   return (
     buf.length >= 5 &&
-    buf[0] === 0x25 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x44 &&
-    buf[3] === 0x46 &&
-    buf[4] === 0x2d
+    buf[0] === 0x25 && // %
+    buf[1] === 0x50 && // P
+    buf[2] === 0x44 && // D
+    buf[3] === 0x46 && // F
+    buf[4] === 0x2d //  -
   );
 }
 
-const MAX_PDF_BYTES = 100 * 1024 * 1024; // 100MB
-const MAX_IMG_BYTES = 20 * 1024 * 1024; // 20MB
+/* ------------------------ limites configuráveis -------------------- */
+/** Use variáveis públicas (Railway) para controlar limites */
+const MAX_PDF_MB = Number(process.env.NEXT_PUBLIC_MAX_PDF_MB ?? 50); // limite global do projeto (Supabase free)
+const MAX_IMG_MB = Number(process.env.NEXT_PUBLIC_MAX_IMG_MB ?? 20);
 
+const MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024;
+const MAX_IMG_BYTES = MAX_IMG_MB * 1024 * 1024;
+
+/* ------------------------------- POST ------------------------------ */
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
@@ -57,86 +55,111 @@ export async function POST(req: Request) {
 
     if (!(pdf instanceof File)) {
       return NextResponse.json(
-        { error: 'Arquivo PDF é obrigatório (campo "pdf").' },
+        { ok: false, error: 'Arquivo PDF é obrigatório (campo "pdf").' },
         { status: 400 }
       );
     }
 
-    // ---- Validações de tipo/tamanho (PDF) ----
+    // valida PDF
     if (pdf.type && pdf.type !== 'application/pdf') {
       return NextResponse.json(
-        { error: 'O arquivo enviado não é um PDF válido.' },
+        { ok: false, error: 'O arquivo enviado não é um PDF válido.' },
         { status: 400 }
       );
     }
     if (typeof pdf.size === 'number' && pdf.size > MAX_PDF_BYTES) {
       return NextResponse.json(
-        { error: `PDF excede ${Math.round(MAX_PDF_BYTES / (1024 * 1024))}MB.` },
+        { ok: false, error: `PDF excede ${MAX_PDF_MB}MB (limite do projeto).` },
         { status: 400 }
       );
     }
 
-    // ---- Validações de capa (opcional) ----
+    // valida capa (opcional)
     if (cover instanceof File) {
       if (cover.type && !cover.type.startsWith('image/')) {
         return NextResponse.json(
-          { error: 'A capa deve ser uma imagem.' },
+          { ok: false, error: 'A capa deve ser uma imagem.' },
           { status: 400 }
         );
       }
       if (typeof cover.size === 'number' && cover.size > MAX_IMG_BYTES) {
         return NextResponse.json(
-          {
-            error: `Imagem excede ${Math.round(
-              MAX_IMG_BYTES / (1024 * 1024)
-            )}MB.`,
-          },
+          { ok: false, error: `Imagem excede ${MAX_IMG_MB}MB.` },
           { status: 400 }
         );
       }
     }
 
-    const root = process.cwd();
-    const ebooksDir = path.join(root, 'public', 'ebooks');
-    const coversDir = path.join(root, 'public', 'covers');
-    await Promise.all([ensureDir(ebooksDir), ensureDir(coversDir)]);
+    const supabase = supabaseAdmin();
 
-    // ---- Salvar PDF ----
+    // ---- PDF -> uploads/ebooks/<uuid> ----
     const pdfBuf = Buffer.from(await pdf.arrayBuffer());
-
-    // checagem de “assinatura” do PDF (mais robusto que confiar no nome)
     if (!looksLikePdf(pdfBuf)) {
       return NextResponse.json(
-        { error: 'O arquivo não parece ser um PDF válido.' },
+        { ok: false, error: 'O arquivo não parece ser um PDF válido.' },
         { status: 400 }
       );
     }
 
-    const pdfExt = extFromMime(pdf.type || 'application/pdf', '.pdf');
-    const pdfName = `${safeBaseName(
+    const pdfKey = `ebooks/${randomUUID()}_${safeBaseName(
       pdf.name || 'livro'
-    )}-${randomUUID()}${pdfExt}`;
-    await fs.writeFile(path.join(ebooksDir, pdfName), pdfBuf);
-    const pdfUrl = `/ebooks/${pdfName}`; // URL pública
+    )}${extFromMime(pdf.type, '.pdf')}`;
+    {
+      const { error } = await supabase.storage
+        .from(SUPABASE_BUCKET)
+        .upload(pdfKey, pdfBuf, {
+          contentType: pdf.type || 'application/pdf',
+          upsert: false,
+          cacheControl: '31536000', // 1 ano
+        });
+      if (error) {
+        // erro amigável para MIME bloqueado no bucket
+        const msg =
+          error.message?.toLowerCase().includes('mime type') ||
+          error.message?.toLowerCase().includes('not supported')
+            ? `O bucket está restringindo tipos de arquivo. Habilite "application/pdf" nas configurações do bucket ou remova a restrição de MIME.`
+            : error.message;
+        console.error('[upload/pdf] storage error:', error);
+        return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+      }
+    }
+    const { data: pdfPub } = supabase.storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(pdfKey);
+    const pdfUrl = pdfPub?.publicUrl;
 
-    // ---- Salvar capa (opcional) ----
+    // ---- CAPA -> uploads/covers/<uuid> ----
     let coverUrl: string | null = null;
     if (cover instanceof File && cover.size > 0) {
       const coverBuf = Buffer.from(await cover.arrayBuffer());
-      const coverExt = extFromMime(cover.type || '', '.jpg');
-      const coverName = `${safeBaseName(
+      const coverKey = `covers/${randomUUID()}_${safeBaseName(
         cover.name || 'cover'
-      )}-${randomUUID()}${coverExt}`;
-      await fs.writeFile(path.join(coversDir, coverName), coverBuf);
-      coverUrl = `/covers/${coverName}`;
+      )}${extFromMime(cover.type, '.jpg')}`;
+      const { error } = await supabase.storage
+        .from(SUPABASE_BUCKET)
+        .upload(coverKey, coverBuf, {
+          contentType: cover.type || 'image/jpeg',
+          upsert: false,
+          cacheControl: '31536000',
+        });
+      if (error) {
+        console.error('[upload/cover] storage error:', error);
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: 500 }
+        );
+      }
+      const { data: coverPub } = supabase.storage
+        .from(SUPABASE_BUCKET)
+        .getPublicUrl(coverKey);
+      coverUrl = coverPub?.publicUrl ?? null;
     }
 
-    return NextResponse.json({ pdfUrl, coverUrl }, { status: 200 });
-  } catch (err: any) {
+    return NextResponse.json({ ok: true, pdfUrl, coverUrl }, { status: 201 });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Falha ao processar upload';
     console.error('[api/upload] error:', err);
-    return NextResponse.json(
-      { error: err?.message || 'Falha ao processar upload' },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

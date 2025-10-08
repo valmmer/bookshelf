@@ -4,35 +4,48 @@ import { notFound } from 'next/navigation';
 import { getBook } from '@/server/db/books';
 import BookForm from '@/components/book/BookForm';
 import { updateBookFormAction } from '@/app/actions/bookActions';
+import type { ReadingStatus } from '@/server/db/types';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * ✅ params é síncrono (não é Promise).
+ * Pode ser async para buscar dados, sem problemas.
+ */
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }): Promise<Metadata> {
-  const { id } = await params;
-  const book = await getBook(Number(id)).catch(() => null);
+  const idNum = Number(params.id);
+  if (!Number.isFinite(idNum)) {
+    return {
+      title: 'Editar livro',
+      description: 'Editar detalhes do livro',
+    };
+  }
+
+  const book = await getBook(idNum).catch(() => null);
   const title = book?.title ? `Editar: ${book.title}` : 'Editar livro';
+
   return {
     title,
     description: 'Editar detalhes do livro',
-    icons: undefined,
-    manifest: undefined,
   };
 }
 
+/**
+ * ✅ Também aqui: params é síncrono.
+ */
 export default async function EditBookPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }) {
-  const { id } = await params;
-  const n = Number(id);
-  if (!Number.isFinite(n)) notFound();
+  const idNum = Number(params.id);
+  if (!Number.isFinite(idNum)) notFound();
 
-  const book = await getBook(n);
+  const book = await getBook(idNum);
   if (!book) notFound();
 
   return (
@@ -40,23 +53,30 @@ export default async function EditBookPage({
       <h1 className="mb-4 text-2xl font-semibold text-foreground">
         Editar livro
       </h1>
+
       <BookForm
         mode="edit"
         action={updateBookFormAction.bind(null, book.id)}
+        /**
+         * ✅ Evitamos `any` e normalizamos tipos:
+         *  - strings opcionais: string vazia quando ausentes
+         *  - números opcionais: `undefined` quando ausentes
+         */
         defaults={{
-          title: book.title,
-          author: book.author,
-          year: book.year,
-          pages: book.pages,
-          currentPage: book.currentPage,
-          status: book.status as any,
-          cover: book.cover,
-          fileUrl: book.fileUrl,
-          synopsis: book.synopsis,
-          rating: book.rating,
-          genre: (book as any)?.genre?.name ?? null,
-          isbn: (book as any)?.isbn ?? null,
-          notes: (book as any)?.notes ?? null,
+          title: book.title ?? '',
+          author: book.author ?? '',
+          year: book.year ?? undefined,
+          pages: typeof book.pages === 'number' ? book.pages : undefined,
+          currentPage:
+            typeof book.currentPage === 'number' ? book.currentPage : 0,
+          status: book.status as ReadingStatus,
+          cover: book.cover ?? '',
+          fileUrl: book.fileUrl ?? '',
+          synopsis: book.synopsis ?? '',
+          rating: book.rating ?? undefined,
+          genre: book.genre?.name ?? '',
+          isbn: book.isbn ?? '',
+          notes: book.notes ?? '',
         }}
       />
     </main>

@@ -1,15 +1,15 @@
-declare module 'pdfjs-dist/build/pdf' {
-  const pdfjsLib: any;
-  export = pdfjsLib;
-}
+// src/types/pdfjs.d.ts
 
-declare module 'pdfjs-dist/*' {
-  const anyModule: any;
-  export = anyModule;
-}
+import type {
+  PDFDocumentProxy,
+  PDFPageProxy,
+  RenderTask,
+  RenderParameters,
+} from 'pdfjs-dist/types/src/display/api';
 
-/** Permite importar a URL de assets (*.mjs) como string */
-declare module '*.mjs?url' {
-  const url: string;
-  export default url;
+declare global {
+  type PdfDocument = PDFDocumentProxy;
+  type PdfPage = PDFPageProxy;
+  type PdfRenderTask = RenderTask;
+  type PdfRenderParams = RenderParameters;
 }

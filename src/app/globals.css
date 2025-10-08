@@ -71,3 +71,65 @@ html.theme-transition, html.theme-transition * {
 .reader-shell canvas {
   transform: none !important;
 }
+
+/* =========================================
+   Form controls legíveis (light/dark)
+   ========================================= */
+@layer base {
+  /* ajuda o UA a escolher paleta correta para inputs nativos */
+  :root { color-scheme: light dark; }
+
+  /* inputs e selects fechados (usam as cores do card) */
+  select,
+  input[type="search"],
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  textarea {
+    background-color: rgb(var(--card));
+    color: rgb(var(--foreground));
+    border-color: rgb(var(--border));
+  }
+
+  /* menu aberto do <select> (as <option>) — alguns UAs não herdam no dark */
+  option {
+    background-color: rgb(var(--popover));
+    color: rgb(var(--popover-foreground));
+  }
+  html.dark option {
+    background-color: rgb(var(--popover));
+    color: rgb(var(--popover-foreground));
+    /* Safari/Chromium: garante cor do texto */
+    -webkit-text-fill-color: rgb(var(--popover-foreground));
+  }
+
+  /* placeholder visível no dark */
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--muted-foreground));
+    opacity: 1;
+  }
+
+  /* foco com a cor do anel do tema */
+  select:focus,
+  input:focus,
+  textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--ring), 0.35);
+    border-color: rgb(var(--ring));
+  }
+}
+
+/* Neutraliza transforms herdados só dentro do leitor */
+.reader-shell canvas {
+  transform: none !important;
+}
+
+@layer utilities {
+  /* permite quebra em qualquer ponto — evita overflow de títulos grandes */
+  .break-anywhere {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+}

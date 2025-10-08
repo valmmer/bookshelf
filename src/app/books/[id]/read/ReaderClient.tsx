@@ -17,11 +17,21 @@ type Props = {
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
+/**
+ * Normaliza a URL do PDF para algo que o browser entenda:
+ * - http(s) absoluto -> retorna como está
+ * - começa com "/" -> mantém
+ * - caminhos tipo "ebooks/foo.pdf" -> prefixa "/"
+ */
 function normalizeFileUrl(input: string): string {
   if (!input) return '';
-  if (input.startsWith('/')) return input;
-  if (input.startsWith('ebooks/')) return '/' + input;
-  return '/' + input.replace(/^\/+/, '');
+  const trimmed = input.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed; // absoluta (Supabase) ✅
+  if (trimmed.startsWith('/')) return trimmed; // relativa já ok
+  if (trimmed.startsWith('ebooks/') || trimmed.startsWith('covers/')) {
+    return '/' + trimmed;
+  }
+  return '/' + trimmed.replace(/^\/+/, '');
 }
 
 function useDebounced<T>(value: T, ms = 120) {
@@ -63,6 +73,7 @@ export default function ReaderClient({
   const [docReadyTick, setDocReadyTick] = useState(0);
 
   const normalizedUrl = useMemo(() => normalizeFileUrl(fileUrl), [fileUrl]);
+  const isAbsolute = /^https?:\/\//i.test(normalizedUrl);
 
   // Carregamento do PDF
   useEffect(() => {
@@ -75,20 +86,23 @@ export default function ReaderClient({
 
         setLoadingDoc(true);
 
-        const pdfjsLib = await import('pdfjs-dist/build/pdf');
+        // pdfjs v4 (ESM)
+        const pdfjsLib = await import('pdfjs-dist');
         (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
         const origin =
           typeof window !== 'undefined' ? window.location.origin + '/' : '/';
 
+        // Cancela tarefa anterior (se houver)
         try {
           loadingTaskRef.current?.destroy?.();
         } catch {}
         loadingTaskRef.current = null;
 
+        // Só passamos baseUrl se NÃO for uma URL absoluta (evita prefixar domínio)
         const loadingTask = (pdfjsLib as any).getDocument({
           url: normalizedUrl,
-          baseUrl: origin,
+          baseUrl: isAbsolute ? undefined : origin,
           disableRange: true,
           disableAutoFetch: true,
           disableStream: true,
@@ -151,7 +165,7 @@ export default function ReaderClient({
       } catch {}
       pdfDocRef.current = null;
     };
-  }, [normalizedUrl, showToast]);
+  }, [normalizedUrl, isAbsolute, showToast]);
 
   // Renderização
   const renderPage = useCallback(async () => {
@@ -305,53 +319,88 @@ export default function ReaderClient({
 
   return (
     <div className="mx-auto max-w-5xl">
-      {/* Toolbar */}
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">{title ?? 'Leitor de PDF'}</div>
-        <div className="flex items-center gap-2">
+      {/* Toolbar (compacta e sem título) */}
+      <div
+        className="
+    mb-2
+    flex items-center justify-between gap-1
+    overflow-x-auto
+    rounded-md border bg-[rgb(var(--card))]/60 px-2 py-1
+    supports-[backdrop-filter]:backdrop-blur-sm
+  "
+      >
+        {/* Esquerda: navegação */}
+        <div className="flex items-center gap-1">
           <Button
             size="sm"
             variant="outline"
+            className="px-2"
             onClick={goFirst}
             disabled={page <= 1}
           >
-            « Início
+            « <span className="hidden sm:inline ml-1">Início</span>
           </Button>
           <Button
             size="sm"
             variant="outline"
+            className="px-2"
             onClick={goPrev}
             disabled={page <= 1}
           >
-            ← Anterior
+            ← <span className="hidden sm:inline ml-1">Anterior</span>
           </Button>
-          <span className="min-w-[80px] text-center text-sm">
-            {loadingDoc ? 'Carregando…' : pageLabel}
-          </span>
+        </div>
+
+        {/* Centro: indicador de página */}
+        <span className="shrink-0 min-w-[70px] text-center text-sm">
+          {loadingDoc ? 'Carregando…' : pageLabel}
+        </span>
+
+        {/* Direita: navegação + zoom */}
+        <div className="flex items-center gap-1">
           <Button
             size="sm"
             variant="outline"
+            className="px-2"
             onClick={goNext}
             disabled={numPages ? page >= numPages : false}
           >
-            Próxima →
+            <span className="hidden sm:inline mr-1">Próxima</span> →
           </Button>
           <Button
             size="sm"
             variant="outline"
+            className="px-2"
             onClick={goLast}
             disabled={!numPages || page >= numPages}
           >
-            Fim »
+            <span className="hidden sm:inline mr-1">Fim</span> »
           </Button>
-          <div className="ml-3 flex items-center gap-1">
-            <Button size="sm" variant="outline" onClick={zoomOut}>
+
+          <div className="ml-2 flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="px-2"
+              onClick={zoomOut}
+            >
               −
             </Button>
-            <Button size="sm" variant="outline" onClick={zoomReset}>
-              100%
+            <Button
+              size="sm"
+              variant="outline"
+              className="px-2"
+              onClick={zoomReset}
+            >
+              <span className="hidden sm:inline">100%</span>
+              <span className="sm:hidden">100</span>
             </Button>
-            <Button size="sm" variant="outline" onClick={zoomIn}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="px-2"
+              onClick={zoomIn}
+            >
               +
             </Button>
           </div>
@@ -361,7 +410,7 @@ export default function ReaderClient({
       {/* Área do canvas */}
       <div
         ref={containerRef}
-        className="relative w-full rounded-md border bg-background p-2 min-h-[60vh]"
+        className="relative w-full rounded-md border bg-background p-2 min-h-[60vh] touch-pan-y"
       >
         {(loadingDoc || (rendering && !loadingDoc)) && (
           <div className="absolute inset-0 grid place-items-center bg-background/60 z-10">

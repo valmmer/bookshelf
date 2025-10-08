@@ -126,10 +126,13 @@ export default async function ReadBookPage({ params }: PageProps) {
       <div className="flex-1">
         <div className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 lg:px-8">
           <section
-            className="mx-auto h[calc(100vh-64px-52px)] w-full max-w-[980px] lg:max-w-[1100px] overflow-hidden rounded-xl border bg-[rgb(var(--card))] shadow-sm isolate"
+            className="mx-auto h-[calc(100vh-64px-52px)] w-full max-w-[980px] lg:max-w-[1100px] overflow-hidden rounded-xl border bg-[rgb(var(--card))] shadow-sm isolate"
             aria-label="Área de leitura"
           >
-            <div className="h-full overflow-auto overscroll-contain">
+            <div
+              className="h-full overflow-auto overscroll-auto touch-pan-y"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               <ReaderClient
                 id={id}
                 title={book.title}
